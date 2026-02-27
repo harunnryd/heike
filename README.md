@@ -44,6 +44,14 @@
 
 Heike is in **beta**. Current focus is runtime correctness, deterministic behavior, and operator safety over feature sprawl.
 
+## Start Here
+
+1. [Quick Start](#quick-start)
+2. [Provider Setup Paths](#provider-setup-paths)
+3. [Worker Lanes (Interactive vs Background)](#worker-lanes-interactive-vs-background)
+4. [Minimal Config Baseline](#minimal-config-baseline)
+5. [Quality Gates](#quality-gates)
+
 ## System Topology
 
 ```mermaid
@@ -88,6 +96,8 @@ flowchart LR
 
 Pick one path below. Do not mix commands across paths.
 
+Command convention: examples use `heike` in `PATH`. If you run from local build artifacts, use `./heike`.
+
 ```sh
 curl -fsSL https://raw.githubusercontent.com/harunnryd/heike/main/install.sh | sh
 ```
@@ -99,6 +109,8 @@ heike config init
 export OPENAI_API_KEY="your-key"
 heike run
 ```
+
+If you use Anthropic, Gemini, ZAI, Ollama, or Codex OAuth, keep the same run flow and replace only auth/model setup using [Provider Setup Paths](#provider-setup-paths).
 
 ### Path B: Binary Install + OpenAI Codex OAuth
 
@@ -119,6 +131,7 @@ OPENAI_API_KEY="your-key" ./heike run
 ### Path D: Daemon Smoke
 
 ```sh
+heike config init
 heike daemon --workspace default
 curl -fsS http://127.0.0.1:8080/health
 ```
@@ -140,9 +153,11 @@ Common REPL commands:
 /exit
 ```
 
-## Provider Setup Matrix
+## Provider Setup Paths
 
 Heike supports multiple provider/auth paths. You are not limited to `OPENAI_API_KEY`.
+
+Always keep `models.default` aligned with a model name defined in `models.registry`.
 
 - **OpenAI API**: `provider: openai` via `OPENAI_API_KEY`.
 - **Anthropic API**: `provider: anthropic` via `ANTHROPIC_API_KEY`.
@@ -337,6 +352,45 @@ flowchart TD
   R --> E["Egress / Transcript Persist"]
 ```
 
+## Worker Lanes (Interactive vs Background)
+
+Heike ingests events into two independent lanes with different operational intent:
+
+- **Interactive lane**: user-facing requests that should be processed with low latency.
+- **Background lane**: scheduled/system workloads that should not block interactive UX.
+
+```mermaid
+flowchart LR
+  U["User Message"] --> IQ["Interactive Queue"]
+  S["Scheduler/Cron/System Event"] --> BQ["Background Queue"]
+  IQ --> IW["Interactive Worker"]
+  BQ --> BW["Background Worker"]
+  IW --> K["Orchestrator Kernel"]
+  BW --> K
+  K --> E["Egress + Store"]
+```
+
+Execution properties:
+
+- Interactive submit path uses `ingress.interactive_submit_timeout` for backpressure control.
+- Queue capacities are isolated (`interactive_queue_size` and `background_queue_size`).
+- Both workers share the same deterministic kernel contract, but run on separate event channels.
+- Graceful shutdown drains ingress using `ingress.drain_timeout` and `ingress.drain_poll_interval`.
+
+Recommended baseline:
+
+```yaml
+ingress:
+  interactive_queue_size: 100
+  background_queue_size: 1000
+  interactive_submit_timeout: 500ms
+  drain_timeout: 5s
+  drain_poll_interval: 100ms
+
+worker:
+  shutdown_timeout: 30s
+```
+
 ## Minimal Config Baseline
 
 After `heike config init`, this is the minimum shape you should verify in `~/.heike/config.yaml`:
@@ -357,7 +411,13 @@ governance:
     - time
     - search_query
     - open
+    - click
     - find
+    - weather
+    - finance
+    - sports
+    - image_query
+    - screenshot
 
 orchestrator:
   max_sub_tasks: 5
