@@ -117,6 +117,30 @@ auth:
     token_path: ~/.heike/auth/codex.json
 
 # ============================================================================
+# Runtime Discovery Configuration
+# ============================================================================
+discovery:
+  # Optional project root override for runtime discovery.
+  # If empty, runtime uses current working directory.
+  project_path: ""
+
+  # Skill source load order (later entries override duplicates from earlier).
+  # Allowed: bundled, global, workspace, project
+  skill_sources:
+    - bundled
+    - global
+    - workspace
+    - project
+
+  # Tool source load order (later entries override duplicates from earlier).
+  # Allowed: bundled, global, workspace, project
+  tool_sources:
+    - global
+    - bundled
+    - workspace
+    - project
+
+# ============================================================================
 # Prompt Configuration
 # ============================================================================
 prompts:
@@ -373,6 +397,7 @@ adapters:
 # HEIKE_AUTH_CODEX_REDIRECT_URI - Override auth.codex.redirect_uri
 # HEIKE_AUTH_CODEX_OAUTH_TIMEOUT - Override auth.codex.oauth_timeout
 # HEIKE_AUTH_CODEX_TOKEN_PATH - Override auth.codex.token_path
+# HEIKE_DISCOVERY_PROJECT_PATH - Override discovery.project_path
 # HEIKE_PROMPTS_PLANNER_SYSTEM - Override prompts.planner.system
 # HEIKE_PROMPTS_PLANNER_OUTPUT - Override prompts.planner.output
 # HEIKE_PROMPTS_THINKER_SYSTEM - Override prompts.thinker.system
