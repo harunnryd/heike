@@ -240,6 +240,9 @@ orchestrator:
   # Maximum number of parallel sub-tasks for complex task decomposition
   max_sub_tasks: 10
 
+  # Maximum number of concurrently running sub-tasks per DAG batch
+  max_parallel_subtasks: 4
+
   # Maximum number of tools exposed to model per turn
   max_tools_per_turn: 12
 
@@ -254,6 +257,9 @@ orchestrator:
 
   # Number of recent transcript lines loaded into session context
   session_history_limit: 20
+
+  # Retry count for invalid planner/reflector JSON output
+  structured_retry_max: 1
 
   # Maximum retry attempts per sub-task in DAG coordinator
   subtask_retry_max: 3
@@ -396,11 +402,13 @@ adapters:
 # HEIKE_TOOLS_APPLY_PATCH_COMMAND - Override tools.apply_patch.command
 # HEIKE_ORCHESTRATOR_VERBOSE    - Override orchestrator.verbose
 # HEIKE_ORCHESTRATOR_MAX_SUB_TASKS - Override orchestrator.max_sub_tasks
+# HEIKE_ORCHESTRATOR_MAX_PARALLEL_SUBTASKS - Override orchestrator.max_parallel_subtasks
 # HEIKE_ORCHESTRATOR_MAX_TOOLS_PER_TURN - Override orchestrator.max_tools_per_turn
 # HEIKE_ORCHESTRATOR_MAX_TURNS - Override orchestrator.max_turns
 # HEIKE_ORCHESTRATOR_TOKEN_BUDGET - Override orchestrator.token_budget
 # HEIKE_ORCHESTRATOR_DECOMPOSE_WORD_THRESHOLD - Override orchestrator.decompose_word_threshold
 # HEIKE_ORCHESTRATOR_SESSION_HISTORY_LIMIT - Override orchestrator.session_history_limit
+# HEIKE_ORCHESTRATOR_STRUCTURED_RETRY_MAX - Override orchestrator.structured_retry_max
 # HEIKE_ORCHESTRATOR_SUBTASK_RETRY_MAX - Override orchestrator.subtask_retry_max
 # HEIKE_ORCHESTRATOR_SUBTASK_RETRY_BACKOFF - Override orchestrator.subtask_retry_backoff
 # HEIKE_INGRESS_INTERACTIVE_QUEUE_SIZE - Override ingress.interactive_queue_size
