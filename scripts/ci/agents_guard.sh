@@ -13,6 +13,10 @@ info() {
   echo "[agents-guard] $*"
 }
 
+has_rg() {
+  command -v rg >/dev/null 2>&1
+}
+
 require_file() {
   local path="$1"
   [[ -f "${path}" ]] || fail "required file missing: ${path}"
@@ -49,11 +53,19 @@ for ref in "${required_refs[@]}"; do
   require_file "${ref}"
 done
 
-code_builtins="$(
-  rg -o --no-filename 'RegisterBuiltin\("[a-z0-9_]+"' internal/tool/builtin \
-    | sed -E 's/RegisterBuiltin\("([a-z0-9_]+)"/\1/' \
-    | sort -u
-)"
+if has_rg; then
+  code_builtins="$(
+    rg -o --no-filename 'RegisterBuiltin\("[a-z0-9_]+"' internal/tool/builtin \
+      | sed -E 's/RegisterBuiltin\("([a-z0-9_]+)"/\1/' \
+      | sort -u
+  )"
+else
+  code_builtins="$(
+    grep -RhoE 'RegisterBuiltin\("[a-z0-9_]+"' internal/tool/builtin \
+      | sed -E 's/RegisterBuiltin\("([a-z0-9_]+)"/\1/' \
+      | sort -u
+  )"
+fi
 
 agents_builtins="$(
   awk '
@@ -74,9 +86,15 @@ if ! diff -u <(printf "%s\n" "${code_builtins}") <(printf "%s\n" "${agents_built
   fail "sync AGENTS.md built-in tool list with code registration"
 fi
 
-forbidden_markers="$(
-  rg -n --glob '!**/*_test.go' 'TODO|FIXME|XXX|ANCHOR' cmd internal || true
-)"
+if has_rg; then
+  forbidden_markers="$(
+    rg -n --glob '!**/*_test.go' 'TODO|FIXME|XXX|ANCHOR' cmd internal || true
+  )"
+else
+  forbidden_markers="$(
+    grep -RInE --exclude='*_test.go' 'TODO|FIXME|XXX|ANCHOR' cmd internal || true
+  )"
+fi
 if [[ -n "${forbidden_markers}" ]]; then
   echo "[agents-guard] Found forbidden markers in production paths:" >&2
   echo "${forbidden_markers}" >&2
