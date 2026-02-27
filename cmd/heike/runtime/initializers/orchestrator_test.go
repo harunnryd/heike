@@ -70,7 +70,7 @@ func TestOrchestratorInitializer_Initialize(t *testing.T) {
 	toolRunner := &tool.Runner{}
 	policyEngine := &policy.Engine{}
 	skillRegistry := &skill.Registry{}
-	var egress egress.Egress
+	egress := egress.NewEgress(storeWorker)
 
 	init := NewOrchestratorInitializer(storeWorker, toolRunner, policyEngine, skillRegistry, egress)
 

@@ -1,77 +1,48 @@
 package skill
 
 import (
-	"os"
-	"path/filepath"
-	"strings"
-
-	"github.com/harunnryd/heike/internal/store"
+	"github.com/harunnryd/heike/internal/runtime/discovery"
 )
 
-// LoadRuntimeRegistry loads skills from bundled, global, workspace, and project-local locations.
+type RuntimeLoadOptions struct {
+	WorkspaceID       string
+	WorkspaceRootPath string
+	WorkspacePath     string
+	ProjectPath       string
+	SourceOrder       []string
+}
+
+// LoadRuntimeRegistry loads skills from configured runtime sources.
 // Missing directories are ignored; parse/load errors are returned as warnings.
-func LoadRuntimeRegistry(registry *Registry, workspaceID string, workspaceRootPath string, workspacePath string) []error {
+func LoadRuntimeRegistry(registry *Registry, opts RuntimeLoadOptions) []error {
 	if registry == nil {
 		return []error{}
 	}
+	order := opts.SourceOrder
+	if len(order) == 0 {
+		order = []string{"bundled", "global", "workspace", "project"}
+	}
 
-	paths := runtimeSkillPaths(workspaceID, workspaceRootPath, workspacePath)
+	sources, err := discovery.ResolveSkillSources(discovery.ResolveOptions{
+		Order:             order,
+		WorkspaceID:       opts.WorkspaceID,
+		WorkspaceRootPath: opts.WorkspaceRootPath,
+		WorkspacePath:     opts.WorkspacePath,
+		ProjectPath:       opts.ProjectPath,
+	})
+	if err != nil {
+		return []error{err}
+	}
+
 	warnings := make([]error, 0)
-	for _, path := range paths {
-		if path == "" {
+	for _, source := range sources {
+		if source.Path == "" {
 			continue
 		}
-		if err := registry.Load(path); err != nil {
+		if err := registry.Load(source.Path); err != nil {
 			warnings = append(warnings, err)
 		}
 	}
 
 	return warnings
-}
-
-func runtimeSkillPaths(workspaceID string, workspaceRootPath string, workspacePath string) []string {
-	candidates := make([]string, 0, 4)
-
-	trimmedWorkspace := strings.TrimSpace(workspacePath)
-	if trimmedWorkspace == "" {
-		if wd, err := os.Getwd(); err == nil {
-			trimmedWorkspace = wd
-		}
-	}
-
-	// Load order sets precedence because later loads overwrite duplicate names:
-	// bundled -> global -> workspace -> project-local.
-	if trimmedWorkspace != "" {
-		candidates = append(candidates, filepath.Join(trimmedWorkspace, "skills"))
-	}
-
-	if globalSkillsDir, err := store.GetSkillsDir(); err == nil {
-		candidates = append(candidates, globalSkillsDir)
-	}
-
-	if workspaceID != "" {
-		if workspaceSkillsDir, err := store.GetWorkspaceSkillsDir(workspaceID, workspaceRootPath); err == nil {
-			candidates = append(candidates, workspaceSkillsDir)
-		}
-	}
-
-	if trimmedWorkspace != "" {
-		candidates = append(candidates, filepath.Join(trimmedWorkspace, ".heike", "skills"))
-	}
-
-	seen := make(map[string]struct{}, len(candidates))
-	paths := make([]string, 0, len(candidates))
-	for _, candidate := range candidates {
-		clean := filepath.Clean(strings.TrimSpace(candidate))
-		if clean == "" || clean == "." {
-			continue
-		}
-		if _, exists := seen[clean]; exists {
-			continue
-		}
-		seen[clean] = struct{}{}
-		paths = append(paths, clean)
-	}
-
-	return paths
 }

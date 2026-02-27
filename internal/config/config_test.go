@@ -139,6 +139,15 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.Auth.Codex.OAuthTimeout != DefaultCodexAuthOAuthTimeout {
 		t.Errorf("Expected default codex oauth timeout %s, got %s", DefaultCodexAuthOAuthTimeout, cfg.Auth.Codex.OAuthTimeout)
 	}
+	if cfg.Discovery.ProjectPath != DefaultDiscoveryProjectPath {
+		t.Errorf("Expected default discovery project path %q, got %q", DefaultDiscoveryProjectPath, cfg.Discovery.ProjectPath)
+	}
+	if len(cfg.Discovery.SkillSources) != 4 {
+		t.Fatalf("Expected 4 default discovery skill sources, got %d", len(cfg.Discovery.SkillSources))
+	}
+	if len(cfg.Discovery.ToolSources) != 4 {
+		t.Fatalf("Expected 4 default discovery tool sources, got %d", len(cfg.Discovery.ToolSources))
+	}
 	if cfg.Adapters.Telegram.UpdateTimeout != DefaultTelegramUpdateTimeout {
 		t.Errorf("Expected default telegram update timeout %d, got %d", DefaultTelegramUpdateTimeout, cfg.Adapters.Telegram.UpdateTimeout)
 	}
@@ -194,6 +203,8 @@ func TestLoad_ExpandsConfiguredPaths(t *testing.T) {
 
 	configPath := filepath.Join(tmpDir, "config.yaml")
 	content := []byte(`
+discovery:
+  project_path: ~/.heike/project
 daemon:
   workspace_path: ~/.heike/workspaces
 auth:
@@ -223,6 +234,10 @@ models:
 	wantWorkspacePath := filepath.Join(tmpDir, ".heike", "workspaces")
 	if cfg.Daemon.WorkspacePath != wantWorkspacePath {
 		t.Fatalf("workspace path = %q, want %q", cfg.Daemon.WorkspacePath, wantWorkspacePath)
+	}
+	wantProjectPath := filepath.Join(tmpDir, ".heike", "project")
+	if cfg.Discovery.ProjectPath != wantProjectPath {
+		t.Fatalf("discovery project path = %q, want %q", cfg.Discovery.ProjectPath, wantProjectPath)
 	}
 
 	wantTokenPath := filepath.Join(tmpDir, ".heike", "auth", "codex.json")

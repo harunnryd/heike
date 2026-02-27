@@ -119,7 +119,13 @@ func NewRuntimeComponents(ctx context.Context, cfg *config.Config, workspaceID s
 	components.ToolRunner = toolsStruct.Runner
 
 	components.SkillRegistry = skill.NewRegistry()
-	loadWarnings := skill.LoadRuntimeRegistry(components.SkillRegistry, workspaceID, cfg.Daemon.WorkspacePath, "")
+	loadWarnings := skill.LoadRuntimeRegistry(components.SkillRegistry, skill.RuntimeLoadOptions{
+		WorkspaceID:       workspaceID,
+		WorkspaceRootPath: cfg.Daemon.WorkspacePath,
+		WorkspacePath:     "",
+		ProjectPath:       cfg.Discovery.ProjectPath,
+		SourceOrder:       cfg.Discovery.SkillSources,
+	})
 	for _, warn := range loadWarnings {
 		slog.Warn("Failed to load skill registry source", "error", warn, "workspace", workspaceID)
 	}

@@ -220,3 +220,74 @@ func TestBuildDedupesCustomToolsByNameWorkspaceOverridesBundled(t *testing.T) {
 		t.Fatalf("expected workspace override, got: %v", payload)
 	}
 }
+
+func TestBuildHonorsConfiguredRuntimeToolSourceOrder(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	workspaceID := "test-source-order-" + t.Name()
+	workspacePath := t.TempDir()
+
+	bundledToolDir := filepath.Join(workspacePath, "skills", "sample", "tools")
+	if err := os.MkdirAll(bundledToolDir, 0755); err != nil {
+		t.Fatalf("create bundled tool dir: %v", err)
+	}
+	bundledManifest := `tools:
+  - name: source.pick
+    language: shell
+    script: pick.sh
+    description: Bundled source tool
+`
+	if err := os.WriteFile(filepath.Join(bundledToolDir, "tools.yaml"), []byte(bundledManifest), 0644); err != nil {
+		t.Fatalf("write bundled tools.yaml: %v", err)
+	}
+	bundledScript := "#!/usr/bin/env sh\n" + `echo '{"source":"bundled"}'` + "\n"
+	if err := os.WriteFile(filepath.Join(bundledToolDir, "pick.sh"), []byte(bundledScript), 0755); err != nil {
+		t.Fatalf("write bundled script: %v", err)
+	}
+
+	projectToolDir := filepath.Join(workspacePath, ".heike", "skills", "sample", "tools")
+	if err := os.MkdirAll(projectToolDir, 0755); err != nil {
+		t.Fatalf("create project tool dir: %v", err)
+	}
+	projectManifest := `tools:
+  - name: source.pick
+    language: shell
+    script: pick.sh
+    description: Project source tool
+`
+	if err := os.WriteFile(filepath.Join(projectToolDir, "tools.yaml"), []byte(projectManifest), 0644); err != nil {
+		t.Fatalf("write project tools.yaml: %v", err)
+	}
+	projectScript := "#!/usr/bin/env sh\n" + `echo '{"source":"project"}'` + "\n"
+	if err := os.WriteFile(filepath.Join(projectToolDir, "pick.sh"), []byte(projectScript), 0755); err != nil {
+		t.Fatalf("write project script: %v", err)
+	}
+
+	policyEngine, err := policy.NewEngine(config.GovernanceConfig{}, workspaceID, "")
+	if err != nil {
+		t.Fatalf("create policy engine: %v", err)
+	}
+	cfg := &config.Config{
+		Discovery: config.DiscoveryConfig{
+			ToolSources: []string{"bundled"},
+		},
+	}
+
+	components, err := Build(workspaceID, policyEngine, workspacePath, cfg)
+	if err != nil {
+		t.Fatalf("Build() failed: %v", err)
+	}
+
+	result, err := components.Runner.Execute(context.Background(), "source.pick", json.RawMessage(`{}`), "")
+	if err != nil {
+		t.Fatalf("execute source.pick: %v", err)
+	}
+
+	var payload map[string]string
+	if err := json.Unmarshal(result, &payload); err != nil {
+		t.Fatalf("parse tool output: %v", err)
+	}
+	if payload["source"] != "bundled" {
+		t.Fatalf("expected bundled source due configured order, got: %v", payload)
+	}
+}

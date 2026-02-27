@@ -9,42 +9,21 @@ import (
 
 type ToolLoader interface {
 	LoadFromSkill(skillPath string) ([]*tool.CustomTool, error)
-	LoadFromBundled(workspacePath string) ([]*tool.CustomTool, error)
-	LoadFromWorkspace(workspacePath string) ([]*tool.CustomTool, error)
-	LoadFromGlobal() ([]*tool.CustomTool, error)
+	LoadFromSource(skillsPath string) ([]*tool.CustomTool, error)
 }
 
-type DefaultToolLoader struct {
-	basePath string
-}
+type DefaultToolLoader struct{}
 
-func NewToolLoader(basePath string) *DefaultToolLoader {
-	return &DefaultToolLoader{
-		basePath: basePath,
-	}
+func NewToolLoader() *DefaultToolLoader {
+	return &DefaultToolLoader{}
 }
 
 func (tl *DefaultToolLoader) LoadFromSkill(skillPath string) ([]*tool.CustomTool, error) {
 	return tl.discoverTools(skillPath)
 }
 
-func (tl *DefaultToolLoader) LoadFromBundled(workspacePath string) ([]*tool.CustomTool, error) {
-	skillsPath := filepath.Join(workspacePath, "skills")
-	return tl.discoverToolsFromDirectory(skillsPath)
-}
-
-func (tl *DefaultToolLoader) LoadFromWorkspace(workspacePath string) ([]*tool.CustomTool, error) {
-	skillsPath := filepath.Join(workspacePath, ".heike", "skills")
-	return tl.discoverToolsFromDirectory(skillsPath)
-}
-
-func (tl *DefaultToolLoader) LoadFromGlobal() ([]*tool.CustomTool, error) {
-	homePath := tl.basePath
-	if homePath == "" {
-		return nil, nil
-	}
-	skillsPath := filepath.Join(homePath, ".heike", "skills")
-	return tl.discoverToolsFromDirectory(skillsPath)
+func (tl *DefaultToolLoader) LoadFromSource(skillsPath string) ([]*tool.CustomTool, error) {
+	return tl.discoverToolsFromDirectory(filepath.Clean(strings.TrimSpace(skillsPath)))
 }
 
 func (tl *DefaultToolLoader) discoverTools(skillPath string) ([]*tool.CustomTool, error) {

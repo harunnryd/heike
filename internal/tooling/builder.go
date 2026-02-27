@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -13,6 +12,7 @@ import (
 	customexec "github.com/harunnryd/heike/internal/executor"
 	"github.com/harunnryd/heike/internal/executor/runtimes"
 	"github.com/harunnryd/heike/internal/policy"
+	"github.com/harunnryd/heike/internal/runtime/discovery"
 	"github.com/harunnryd/heike/internal/sandbox"
 	"github.com/harunnryd/heike/internal/skill/loader"
 	"github.com/harunnryd/heike/internal/store"
@@ -41,11 +41,6 @@ func Build(workspaceID string, policyEngine *policy.Engine, workspacePath string
 		return nil, fmt.Errorf("resolve workspace root path: %w", err)
 	}
 
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil, fmt.Errorf("get home directory: %w", err)
-	}
-
 	builtinOptions, err := resolveBuiltinOptions(cfg)
 	if err != nil {
 		return nil, err
@@ -63,7 +58,21 @@ func Build(workspaceID string, policyEngine *policy.Engine, workspacePath string
 	slog.Info("Built-in tools registered", "count", len(builtins), "workspace", workspaceID)
 
 	sandboxBasePath := filepath.Join(filepath.Dir(workspaceRoot), "sandboxes")
-	if err := registerCustomTools(toolRegistry, workspaceID, home, workspacePath, sandboxBasePath); err != nil {
+	sourceOrder := cfg.Discovery.ToolSources
+	if len(sourceOrder) == 0 {
+		sourceOrder = []string{"global", "bundled", "workspace", "project"}
+	}
+	sources, err := discovery.ResolveToolSources(discovery.ResolveOptions{
+		Order:             sourceOrder,
+		WorkspaceID:       workspaceID,
+		WorkspaceRootPath: cfg.Daemon.WorkspacePath,
+		WorkspacePath:     workspacePath,
+		ProjectPath:       cfg.Discovery.ProjectPath,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("resolve runtime tool sources: %w", err)
+	}
+	if err := registerCustomTools(toolRegistry, workspaceID, sandboxBasePath, sources); err != nil {
 		return nil, fmt.Errorf("register custom tools: %w", err)
 	}
 
@@ -73,8 +82,8 @@ func Build(workspaceID string, policyEngine *policy.Engine, workspacePath string
 	}, nil
 }
 
-func registerCustomTools(registry *tool.Registry, workspaceID, home, workspacePath, sandboxBasePath string) error {
-	toolLoader := loader.NewToolLoader(home)
+func registerCustomTools(registry *tool.Registry, workspaceID, sandboxBasePath string, sources []discovery.SourceDescriptor) error {
+	toolLoader := loader.NewToolLoader()
 
 	runtimeRegistry, err := runtimes.NewRuntimeRegistry()
 	if err != nil {
@@ -89,30 +98,11 @@ func registerCustomTools(registry *tool.Registry, workspaceID, home, workspacePa
 		runtimeExecutor.SetSandbox(sbManager)
 	}
 
-	globalTools, err := toolLoader.LoadFromGlobal()
+	allTools, err := loadCustomToolsFromSources(toolLoader, sources)
 	if err != nil {
-		return fmt.Errorf("load global custom tools: %w", err)
+		return err
 	}
 
-	if workspacePath == "" {
-		workspacePath, err = os.Getwd()
-		if err != nil {
-			return fmt.Errorf("get current workspace path: %w", err)
-		}
-	}
-
-	bundledTools, err := toolLoader.LoadFromBundled(workspacePath)
-	if err != nil {
-		return fmt.Errorf("load bundled custom tools: %w", err)
-	}
-
-	workspaceTools, err := toolLoader.LoadFromWorkspace(workspacePath)
-	if err != nil {
-		return fmt.Errorf("load workspace custom tools: %w", err)
-	}
-
-	allTools := append(globalTools, bundledTools...)
-	allTools = append(allTools, workspaceTools...)
 	dedupedTools := dedupeCustomToolsByName(allTools)
 	for _, ct := range dedupedTools {
 		if err := runtimeExecutor.Validate(ct); err != nil {
@@ -132,6 +122,34 @@ func registerCustomTools(registry *tool.Registry, workspaceID, home, workspacePa
 	}
 
 	return nil
+}
+
+func loadCustomToolsFromSources(toolLoader *loader.DefaultToolLoader, sources []discovery.SourceDescriptor) ([]*tool.CustomTool, error) {
+	if toolLoader == nil {
+		return nil, fmt.Errorf("tool loader not initialized")
+	}
+
+	allTools := make([]*tool.CustomTool, 0)
+	for _, source := range sources {
+		tools, err := toolLoader.LoadFromSource(source.Path)
+		if err != nil {
+			return nil, fmt.Errorf("load custom tools from %s (%s): %w", source.Kind, source.Path, err)
+		}
+		if len(tools) == 0 {
+			continue
+		}
+		for _, ct := range tools {
+			if ct == nil {
+				continue
+			}
+			if strings.TrimSpace(ct.Source) == "" {
+				ct.Source = "skill:" + string(source.Kind)
+			}
+		}
+		allTools = append(allTools, tools...)
+	}
+
+	return allTools, nil
 }
 
 func dedupeCustomToolsByName(tools []*tool.CustomTool) []*tool.CustomTool {

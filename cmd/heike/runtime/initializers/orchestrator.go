@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/harunnryd/heike/internal/adapter"
 	"github.com/harunnryd/heike/internal/config"
 	"github.com/harunnryd/heike/internal/egress"
 	"github.com/harunnryd/heike/internal/orchestrator"
@@ -52,17 +51,7 @@ func (oi *OrchestratorInitializer) Initialize(ctx context.Context, cfg *config.C
 	}
 
 	if oi.egress == nil {
-		oi.egress = egress.NewEgress(oi.storeWorker)
-		cliAdapter := adapter.NewCLIAdapter()
-		if err := oi.egress.Register(cliAdapter); err != nil {
-			return nil, fmt.Errorf("register cli adapter: %w", err)
-		}
-		if err := oi.egress.Register(adapter.NewNullAdapter("scheduler")); err != nil {
-			return nil, fmt.Errorf("register scheduler adapter: %w", err)
-		}
-		if err := oi.egress.Register(adapter.NewNullAdapter("system")); err != nil {
-			return nil, fmt.Errorf("register system adapter: %w", err)
-		}
+		return nil, fmt.Errorf("egress not initialized")
 	}
 
 	if oi.skillRegistry == nil {

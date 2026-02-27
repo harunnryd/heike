@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/harunnryd/heike/internal/adapter"
 	"github.com/harunnryd/heike/internal/config"
 	"github.com/harunnryd/heike/internal/daemon"
 	"github.com/harunnryd/heike/internal/daemon/components"
@@ -25,6 +26,21 @@ func setupTestWorkspace(t *testing.T) (string, func()) {
 	})
 	os.Setenv("HOME", tmpDir)
 	return tmpDir, func() {}
+}
+
+func newTestAdapterManager(t *testing.T, cfg *config.Config) *adapter.RuntimeManager {
+	t.Helper()
+	eventHandler := func(ctx context.Context, source string, eventType string, sessionID string, content string, metadata map[string]string) error {
+		return nil
+	}
+	mgr, err := adapter.NewRuntimeManager(cfg.Adapters, eventHandler, adapter.RuntimeAdapterOptions{
+		IncludeCLI:        false,
+		IncludeSystemNull: true,
+	})
+	if err != nil {
+		t.Fatalf("failed to create adapter manager: %v", err)
+	}
+	return mgr
 }
 
 func TestDaemonFullLifecycle(t *testing.T) {
@@ -61,7 +77,8 @@ func TestDaemonFullLifecycle(t *testing.T) {
 	policyComp := components.NewPolicyEngineComponent(&cfg.Governance, workspaceID, cfg.Daemon.WorkspacePath)
 	d.AddComponent(policyComp)
 
-	orchComp := components.NewOrchestratorComponent(cfg, storeComp, policyComp, nil)
+	adapterMgr := newTestAdapterManager(t, cfg)
+	orchComp := components.NewOrchestratorComponent(cfg, storeComp, policyComp, adapterMgr)
 	d.AddComponent(orchComp)
 
 	ingressComp := components.NewIngressComponent(storeComp, &cfg.Ingress, &cfg.Governance)
@@ -158,7 +175,8 @@ func TestDaemonComponentInitOrder(t *testing.T) {
 	d.AddComponent(storeComp)
 	d.AddComponent(policyComp)
 
-	orchComp := components.NewOrchestratorComponent(cfg, storeComp, policyComp, nil)
+	adapterMgr := newTestAdapterManager(t, cfg)
+	orchComp := components.NewOrchestratorComponent(cfg, storeComp, policyComp, adapterMgr)
 	d.AddComponent(orchComp)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -209,7 +227,8 @@ func TestDaemonHealthEndpoint(t *testing.T) {
 
 	storeComp := components.NewStoreWorkerComponent(workspaceID, cfg.Daemon.WorkspacePath, &cfg.Store)
 	policyComp := components.NewPolicyEngineComponent(&cfg.Governance, workspaceID, cfg.Daemon.WorkspacePath)
-	orchComp := components.NewOrchestratorComponent(cfg, storeComp, policyComp, nil)
+	adapterMgr := newTestAdapterManager(t, cfg)
+	orchComp := components.NewOrchestratorComponent(cfg, storeComp, policyComp, adapterMgr)
 	ingressComp := components.NewIngressComponent(storeComp, &cfg.Ingress, &cfg.Governance)
 	workersComp := components.NewWorkersComponent(cfg, ingressComp, orchComp, storeComp)
 	schedulerComp := components.NewSchedulerComponent(cfg, ingressComp, workspaceID)
@@ -288,7 +307,8 @@ func TestDaemonGracefulShutdown(t *testing.T) {
 
 	storeComp := components.NewStoreWorkerComponent(workspaceID, cfg.Daemon.WorkspacePath, &cfg.Store)
 	policyComp := components.NewPolicyEngineComponent(&cfg.Governance, workspaceID, cfg.Daemon.WorkspacePath)
-	orchComp := components.NewOrchestratorComponent(cfg, storeComp, policyComp, nil)
+	adapterMgr := newTestAdapterManager(t, cfg)
+	orchComp := components.NewOrchestratorComponent(cfg, storeComp, policyComp, adapterMgr)
 	ingressComp := components.NewIngressComponent(storeComp, &cfg.Ingress, &cfg.Governance)
 	workersComp := components.NewWorkersComponent(cfg, ingressComp, orchComp, storeComp)
 	schedulerComp := components.NewSchedulerComponent(cfg, ingressComp, workspaceID)

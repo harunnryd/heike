@@ -6,10 +6,11 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"os/user"
 	"path/filepath"
 	"strings"
 
+	"github.com/harunnryd/heike/internal/config"
+	"github.com/harunnryd/heike/internal/runtime/discovery"
 	skillmodel "github.com/harunnryd/heike/internal/skill"
 	"github.com/harunnryd/heike/internal/skill/domain"
 	"github.com/harunnryd/heike/internal/skill/formatter"
@@ -17,6 +18,7 @@ import (
 	"github.com/harunnryd/heike/internal/skill/parser"
 	"github.com/harunnryd/heike/internal/skill/repository"
 	"github.com/harunnryd/heike/internal/skill/service"
+	"github.com/harunnryd/heike/internal/tool"
 
 	"github.com/spf13/cobra"
 )
@@ -64,12 +66,7 @@ var skillInstallCmd = &cobra.Command{
 			return fmt.Errorf("failed to copy skill files: %w", err)
 		}
 
-		usr, err := user.Current()
-		if err != nil {
-			return fmt.Errorf("failed to get current user: %w", err)
-		}
-
-		toolLoader := loader.NewToolLoader(usr.HomeDir)
+		toolLoader := loader.NewToolLoader()
 		customTools, err := toolLoader.LoadFromSkill(installedPath)
 		if err != nil {
 			return fmt.Errorf("failed to load custom tools: %w", err)
@@ -130,24 +127,26 @@ var skillSearchCmd = &cobra.Command{
 			return fmt.Errorf("failed to get working directory: %w", err)
 		}
 
-		usr, err := user.Current()
+		toolLoader := loader.NewToolLoader()
+		sources, err := discovery.ResolveToolSources(discovery.ResolveOptions{
+			Order:             runtimeToolDiscoveryOrder(),
+			WorkspaceID:       config.DefaultWorkspaceID,
+			WorkspaceRootPath: runtimeWorkspaceRootPath(),
+			WorkspacePath:     wd,
+			ProjectPath:       runtimeProjectPath(),
+		})
 		if err != nil {
-			return fmt.Errorf("failed to get current user: %w", err)
+			return fmt.Errorf("resolve runtime tool sources: %w", err)
 		}
 
-		toolLoader := loader.NewToolLoader(usr.HomeDir)
-
-		projectSkills, err := toolLoader.LoadFromWorkspace(wd)
-		if err != nil {
-			return fmt.Errorf("failed to load project skills: %w", err)
+		var allSkills []*tool.CustomTool
+		for _, source := range sources {
+			tools, err := toolLoader.LoadFromSource(source.Path)
+			if err != nil {
+				return fmt.Errorf("failed to load tools from %s (%s): %w", source.Kind, source.Path, err)
+			}
+			allSkills = append(allSkills, tools...)
 		}
-
-		globalSkills, err := toolLoader.LoadFromGlobal()
-		if err != nil {
-			return fmt.Errorf("failed to load global skills: %w", err)
-		}
-
-		allSkills := append(projectSkills, globalSkills...)
 
 		if len(allSkills) == 0 {
 			fmt.Println("No skills found.")
@@ -221,7 +220,7 @@ var skillShowCmd = &cobra.Command{
 		fmt.Printf("Version: %s\n", skill.Version)
 		fmt.Printf("Author: %s\n", skill.Author)
 
-		toolLoader := loader.NewToolLoader("")
+		toolLoader := loader.NewToolLoader()
 		customTools, err := toolLoader.LoadFromSkill(filepath.Dir(skillPath))
 		if err != nil {
 			return fmt.Errorf("failed to load custom tools: %w", err)
@@ -454,4 +453,25 @@ func init() {
 	skillCmd.AddCommand(skillTestCmd)
 	skillCmd.AddCommand(skillLsCmd)
 	rootCmd.AddCommand(skillCmd)
+}
+
+func runtimeToolDiscoveryOrder() []string {
+	if cfg == nil || len(cfg.Discovery.ToolSources) == 0 {
+		return []string{"global", "bundled", "workspace", "project"}
+	}
+	return append([]string(nil), cfg.Discovery.ToolSources...)
+}
+
+func runtimeWorkspaceRootPath() string {
+	if cfg == nil {
+		return ""
+	}
+	return cfg.Daemon.WorkspacePath
+}
+
+func runtimeProjectPath() string {
+	if cfg == nil {
+		return ""
+	}
+	return cfg.Discovery.ProjectPath
 }

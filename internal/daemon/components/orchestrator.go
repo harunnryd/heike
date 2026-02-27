@@ -49,6 +49,9 @@ func (o *OrchestratorComponent) Init(ctx context.Context) error {
 	if storeWorker == nil || policyEngine == nil {
 		return fmt.Errorf("required dependencies not initialized")
 	}
+	if o.adapterMgr == nil {
+		return fmt.Errorf("adapter manager is required")
+	}
 
 	toolingComponents, err := tooling.Build(
 		o.storeWorkerComp.workspaceID,
@@ -60,7 +63,13 @@ func (o *OrchestratorComponent) Init(ctx context.Context) error {
 		return fmt.Errorf("failed to initialize tooling: %w", err)
 	}
 	skillRegistry := skill.NewRegistry()
-	loadWarnings := skill.LoadRuntimeRegistry(skillRegistry, o.storeWorkerComp.workspaceID, o.cfg.Daemon.WorkspacePath, "")
+	loadWarnings := skill.LoadRuntimeRegistry(skillRegistry, skill.RuntimeLoadOptions{
+		WorkspaceID:       o.storeWorkerComp.workspaceID,
+		WorkspaceRootPath: o.cfg.Daemon.WorkspacePath,
+		WorkspacePath:     "",
+		ProjectPath:       o.cfg.Discovery.ProjectPath,
+		SourceOrder:       o.cfg.Discovery.SkillSources,
+	})
 	for _, warn := range loadWarnings {
 		slog.Warn("Failed to load skill registry source", "error", warn, "workspace", o.storeWorkerComp.workspaceID)
 	}
@@ -68,21 +77,9 @@ func (o *OrchestratorComponent) Init(ctx context.Context) error {
 		slog.Info("Skill registry initialized", "workspace", o.storeWorkerComp.workspaceID, "count", len(names))
 	}
 	egressMgr := egress.NewEgress(storeWorker)
-	if o.adapterMgr != nil {
-		for _, outputAdapter := range o.adapterMgr.OutputAdapters() {
-			if err := egressMgr.Register(outputAdapter); err != nil {
-				return fmt.Errorf("failed to register egress adapter %s: %w", outputAdapter.Name(), err)
-			}
-		}
-	} else {
-		if err := egressMgr.Register(adapter.NewCLIAdapter()); err != nil {
-			return fmt.Errorf("failed to register default egress adapter: %w", err)
-		}
-		if err := egressMgr.Register(adapter.NewNullAdapter("scheduler")); err != nil {
-			return fmt.Errorf("failed to register scheduler egress adapter: %w", err)
-		}
-		if err := egressMgr.Register(adapter.NewNullAdapter("system")); err != nil {
-			return fmt.Errorf("failed to register system egress adapter: %w", err)
+	for _, outputAdapter := range o.adapterMgr.OutputAdapters() {
+		if err := egressMgr.Register(outputAdapter); err != nil {
+			return fmt.Errorf("failed to register egress adapter %s: %w", outputAdapter.Name(), err)
 		}
 	}
 

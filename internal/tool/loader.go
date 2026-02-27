@@ -38,6 +38,5 @@ type CustomTool struct {
 
 type ToolLoader interface {
 	LoadFromSkill(skillPath string) ([]*CustomTool, error)
-	LoadFromWorkspace(workspacePath string) ([]*CustomTool, error)
-	LoadFromGlobal() ([]*CustomTool, error)
+	LoadFromSource(skillsPath string) ([]*CustomTool, error)
 }

@@ -6,37 +6,7 @@ import (
 	"testing"
 )
 
-func TestRuntimeSkillPaths_IncludesBundledGlobalWorkspaceAndProjectLocal(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-
-	project := t.TempDir()
-	paths := runtimeSkillPaths("default", "", project)
-
-	bundledSkills := filepath.Join(project, "skills")
-	projectSkills := filepath.Join(project, ".heike", "skills")
-	workspaceSkills := filepath.Join(home, ".heike", "workspaces", "default", "skills")
-	globalSkills := filepath.Join(home, ".heike", "skills")
-
-	if len(paths) != 4 {
-		t.Fatalf("paths length = %d, want 4 (%v)", len(paths), paths)
-	}
-
-	if paths[0] != bundledSkills {
-		t.Fatalf("bundled path = %s, want %s", paths[0], bundledSkills)
-	}
-	if paths[1] != globalSkills {
-		t.Fatalf("global path = %s, want %s", paths[1], globalSkills)
-	}
-	if paths[2] != workspaceSkills {
-		t.Fatalf("workspace path = %s, want %s", paths[2], workspaceSkills)
-	}
-	if paths[3] != projectSkills {
-		t.Fatalf("project-local path = %s, want %s", paths[3], projectSkills)
-	}
-}
-
-func TestLoadRuntimeRegistry_LoadsFromAllSources(t *testing.T) {
+func TestLoadRuntimeRegistry_LoadsFromConfiguredSources(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
@@ -76,7 +46,13 @@ tools: [global_tool]
 Use global guidance.`)
 
 	registry := NewRegistry()
-	warnings := LoadRuntimeRegistry(registry, "default", "", project)
+	warnings := LoadRuntimeRegistry(registry, RuntimeLoadOptions{
+		WorkspaceID:       "default",
+		WorkspaceRootPath: "",
+		WorkspacePath:     project,
+		ProjectPath:       "",
+		SourceOrder:       []string{"bundled", "global", "workspace", "project"},
+	})
 	if len(warnings) > 0 {
 		t.Fatalf("unexpected load warnings: %v", warnings)
 	}
@@ -90,7 +66,7 @@ Use global guidance.`)
 	}
 }
 
-func TestLoadRuntimeRegistry_Precedence_ProjectLocalOverridesEarlierSources(t *testing.T) {
+func TestLoadRuntimeRegistry_Precedence_ProjectOverridesEarlierSources(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
@@ -130,7 +106,13 @@ tools: [project_tool]
 Project guidance.`)
 
 	registry := NewRegistry()
-	warnings := LoadRuntimeRegistry(registry, "default", "", project)
+	warnings := LoadRuntimeRegistry(registry, RuntimeLoadOptions{
+		WorkspaceID:       "default",
+		WorkspaceRootPath: "",
+		WorkspacePath:     project,
+		ProjectPath:       "",
+		SourceOrder:       []string{"bundled", "global", "workspace", "project"},
+	})
 	if len(warnings) > 0 {
 		t.Fatalf("unexpected load warnings: %v", warnings)
 	}
@@ -158,7 +140,13 @@ func TestLoadRuntimeRegistry_CollectsWarnings(t *testing.T) {
 	}
 
 	registry := NewRegistry()
-	warnings := LoadRuntimeRegistry(registry, "default", "", project)
+	warnings := LoadRuntimeRegistry(registry, RuntimeLoadOptions{
+		WorkspaceID:       "default",
+		WorkspaceRootPath: "",
+		WorkspacePath:     project,
+		ProjectPath:       "",
+		SourceOrder:       []string{"project"},
+	})
 	if len(warnings) == 0 {
 		t.Fatal("expected warnings for invalid skill")
 	}

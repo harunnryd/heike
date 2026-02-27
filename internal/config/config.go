@@ -22,6 +22,7 @@ type Config struct {
 	Governance   GovernanceConfig   `koanf:"governance"`
 	Auth         AuthConfig         `koanf:"auth"`
 	Adapters     AdaptersConfig     `koanf:"adapters"`
+	Discovery    DiscoveryConfig    `koanf:"discovery"`
 	Tools        ToolsConfig        `koanf:"tools"`
 	Ingress      IngressConfig      `koanf:"ingress"`
 	Prompts      PromptsConfig      `koanf:"prompts"`
@@ -103,6 +104,12 @@ type CodexAuthConfig struct {
 	RedirectURI  string `koanf:"redirect_uri"`
 	OAuthTimeout string `koanf:"oauth_timeout"`
 	TokenPath    string `koanf:"token_path"`
+}
+
+type DiscoveryConfig struct {
+	ProjectPath  string   `koanf:"project_path"`
+	SkillSources []string `koanf:"skill_sources"`
+	ToolSources  []string `koanf:"tool_sources"`
 }
 
 type ToolsConfig struct {
@@ -242,6 +249,7 @@ const (
 	DefaultCodexAuthOAuthTimeout           = "5m"
 	DefaultCodexRequestTimeout             = "120s"
 	DefaultCodexEmbeddingInputMaxChars     = 8000
+	DefaultDiscoveryProjectPath            = ""
 	DefaultPlannerSystemPrompt             = "You are a strategic planning agent. Create a concise, step-by-step plan to achieve the goal."
 	DefaultPlannerOutputPrompt             = "Output the plan as a JSON array of objects with 'id' and 'description' fields. Do not include other text."
 	DefaultThinkerSystemPrompt             = "You are Heike, an intelligent agent executing a task."
@@ -329,6 +337,9 @@ func Load(cmd *cobra.Command) (*Config, error) {
 		"auth.codex.redirect_uri":               DefaultCodexAuthRedirectURI,
 		"auth.codex.oauth_timeout":              DefaultCodexAuthOAuthTimeout,
 		"auth.codex.token_path":                 filepath.Join(os.Getenv("HOME"), ".heike", "auth", "codex.json"),
+		"discovery.project_path":                DefaultDiscoveryProjectPath,
+		"discovery.skill_sources":               []string{"bundled", "global", "workspace", "project"},
+		"discovery.tool_sources":                []string{"global", "bundled", "workspace", "project"},
 		"prompts.planner.system":                DefaultPlannerSystemPrompt,
 		"prompts.planner.output":                DefaultPlannerOutputPrompt,
 		"prompts.thinker.system":                DefaultThinkerSystemPrompt,
@@ -475,6 +486,14 @@ func Load(cmd *cobra.Command) (*Config, error) {
 func normalizePathFields(cfg *Config) error {
 	if cfg == nil {
 		return nil
+	}
+
+	projectPath, err := expandConfiguredPath(cfg.Discovery.ProjectPath)
+	if err != nil {
+		return err
+	}
+	if projectPath != "" {
+		cfg.Discovery.ProjectPath = projectPath
 	}
 
 	workspacePath, err := expandConfiguredPath(cfg.Daemon.WorkspacePath)
