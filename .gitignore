@@ -29,18 +29,18 @@ logs/
 # =========================
 # Runtime state (local dev)
 # =========================
-.heike/
-.heike
-.heike_test/
-test/
-tmp/
-temp/
-sandbox/
+/.heike/
+/.heike
+/.heike_test/
+/test/
+/tmp/
+/temp/
+/sandbox/
 
 # If running workspace inside repo during dev
-workspaces/
-sessions/
-governance/
+/workspaces/
+/sessions/
+/governance/
 
 # SQLite (if used in future)
 *.db
