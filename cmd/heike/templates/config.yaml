@@ -261,7 +261,7 @@ orchestrator:
   # Enable verbose logging for orchestrator operations
   verbose: false
 
-  # Maximum number of parallel sub-tasks for complex task decomposition
+  # Maximum number of sub-tasks produced by task decomposition
   max_sub_tasks: 10
 
   # Maximum number of concurrently running sub-tasks per DAG batch
@@ -398,6 +398,8 @@ adapters:
 # HEIKE_AUTH_CODEX_OAUTH_TIMEOUT - Override auth.codex.oauth_timeout
 # HEIKE_AUTH_CODEX_TOKEN_PATH - Override auth.codex.token_path
 # HEIKE_DISCOVERY_PROJECT_PATH - Override discovery.project_path
+# HEIKE_DISCOVERY_SKILL_SOURCES - Override discovery.skill_sources (comma-separated)
+# HEIKE_DISCOVERY_TOOL_SOURCES - Override discovery.tool_sources (comma-separated)
 # HEIKE_PROMPTS_PLANNER_SYSTEM - Override prompts.planner.system
 # HEIKE_PROMPTS_PLANNER_OUTPUT - Override prompts.planner.output
 # HEIKE_PROMPTS_THINKER_SYSTEM - Override prompts.thinker.system
