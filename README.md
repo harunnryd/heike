@@ -46,11 +46,26 @@ Heike is in **beta**. Current focus is runtime correctness, deterministic behavi
 
 ## Start Here
 
-1. [Quick Start](#quick-start)
-2. [Provider Setup Paths](#provider-setup-paths)
-3. [Worker Lanes (Interactive vs Background)](#worker-lanes-interactive-vs-background)
-4. [Minimal Config Baseline](#minimal-config-baseline)
-5. [Quality Gates](#quality-gates)
+1. [At A Glance](#at-a-glance)
+2. [Why Heike](#why-heike)
+3. [Project Status](#project-status)
+4. [System Topology](#system-topology)
+5. [Quick Start](#quick-start)
+6. [Provider Setup Paths](#provider-setup-paths)
+7. [Adapter Setup (Slack and Telegram)](#adapter-setup-slack-and-telegram)
+8. [Deterministic Execution Contract](#deterministic-execution-contract)
+9. [End-to-End Request Flow](#end-to-end-request-flow)
+10. [Worker Lanes (Interactive vs Background)](#worker-lanes-interactive-vs-background)
+11. [Minimal Config Baseline](#minimal-config-baseline)
+12. [Governance and Approval Workflow](#governance-and-approval-workflow)
+13. [Skill Runtime Model](#skill-runtime-model)
+14. [Persistence Model](#persistence-model)
+15. [Run Modes](#run-modes)
+16. [Tooling Highlights](#tooling-highlights)
+17. [Quality Gates](#quality-gates)
+18. [Documentation Map](#documentation-map)
+19. [Contributing and Community](#contributing-and-community)
+20. [Release Assets](#release-assets)
 
 ## System Topology
 
