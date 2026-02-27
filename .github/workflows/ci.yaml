@@ -17,6 +17,13 @@ jobs:
       with:
         go-version-file: go.mod
 
+    - name: Ensure ripgrep
+      run: |
+        if ! command -v rg >/dev/null 2>&1; then
+          sudo apt-get update
+          sudo apt-get install -y ripgrep
+        fi
+
     - name: Verify Dependencies
       run: go mod verify
 
