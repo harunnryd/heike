@@ -16,6 +16,7 @@ import (
 type HTTPServerComponent struct {
 	daemon      *daemon.Daemon
 	cfg         *config.ServerConfig
+	deps        []string
 	server      *http.Server
 	shutdownTTL time.Duration
 	initialized bool
@@ -25,9 +26,18 @@ type HTTPServerComponent struct {
 }
 
 func NewHTTPServerComponent(d *daemon.Daemon, cfg *config.ServerConfig) *HTTPServerComponent {
+	return NewHTTPServerComponentWithDependencies(d, cfg, []string{
+		"StoreWorker", "PolicyEngine", "Orchestrator", "Ingress", "Workers", "Scheduler",
+	})
+}
+
+func NewHTTPServerComponentWithDependencies(d *daemon.Daemon, cfg *config.ServerConfig, deps []string) *HTTPServerComponent {
+	depList := make([]string, len(deps))
+	copy(depList, deps)
 	return &HTTPServerComponent{
 		daemon:      d,
 		cfg:         cfg,
+		deps:        depList,
 		initialized: false,
 		started:     false,
 	}
@@ -38,7 +48,9 @@ func (h *HTTPServerComponent) Name() string {
 }
 
 func (h *HTTPServerComponent) Dependencies() []string {
-	return []string{"StoreWorker", "PolicyEngine", "Orchestrator", "Ingress", "Workers", "Scheduler"}
+	deps := make([]string, len(h.deps))
+	copy(deps, h.deps)
+	return deps
 }
 
 func (h *HTTPServerComponent) Init(ctx context.Context) error {

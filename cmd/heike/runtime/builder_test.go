@@ -18,11 +18,13 @@ func TestBuilder_WithMethods(t *testing.T) {
 	ctx := context.Background()
 	cfg := &config.Config{}
 	workspaceID := "test-workspace-" + t.Name()
+	adapterOpts := AdapterBuildOptions{IncludeCLI: false, IncludeSystemNull: true}
 
 	builder := NewRuntimeBuilder().
 		WithContext(ctx).
 		WithConfig(cfg).
-		WithWorkspace(workspaceID)
+		WithWorkspace(workspaceID).
+		WithAdapterOptions(adapterOpts)
 
 	impl, ok := builder.(*DefaultRuntimeBuilder)
 	if !ok {
@@ -37,6 +39,24 @@ func TestBuilder_WithMethods(t *testing.T) {
 	}
 	if impl.workspaceID != workspaceID {
 		t.Error("WithWorkspace did not set workspaceID")
+	}
+	if impl.adapterOpts != adapterOpts {
+		t.Error("WithAdapterOptions did not set adapter options")
+	}
+}
+
+func TestNewRuntimeBuilder_DefaultAdapterOptions(t *testing.T) {
+	builder := NewRuntimeBuilder()
+	impl, ok := builder.(*DefaultRuntimeBuilder)
+	if !ok {
+		t.Fatal("Builder is not DefaultRuntimeBuilder")
+	}
+
+	if !impl.adapterOpts.IncludeCLI {
+		t.Error("default adapter options should include CLI adapter")
+	}
+	if !impl.adapterOpts.IncludeSystemNull {
+		t.Error("default adapter options should include system null adapters")
 	}
 }
 

@@ -45,7 +45,23 @@ type RuntimeComponents struct {
 	Locks *concurrency.SimpleSessionLockManager
 }
 
+type AdapterBuildOptions struct {
+	IncludeCLI        bool
+	IncludeSystemNull bool
+}
+
+func DefaultAdapterBuildOptions() AdapterBuildOptions {
+	return AdapterBuildOptions{
+		IncludeCLI:        true,
+		IncludeSystemNull: true,
+	}
+}
+
 func NewRuntimeComponents(ctx context.Context, cfg *config.Config, workspaceID string) (*RuntimeComponents, error) {
+	return NewRuntimeComponentsWithOptions(ctx, cfg, workspaceID, DefaultAdapterBuildOptions())
+}
+
+func NewRuntimeComponentsWithOptions(ctx context.Context, cfg *config.Config, workspaceID string, adapterOpts AdapterBuildOptions) (*RuntimeComponents, error) {
 	cancel := func() {}
 
 	if ctx == nil {
@@ -80,8 +96,8 @@ func NewRuntimeComponents(ctx context.Context, cfg *config.Config, workspaceID s
 	}
 
 	adapterMgr, err := adapter.NewRuntimeManager(cfg.Adapters, eventHandler, adapter.RuntimeAdapterOptions{
-		IncludeCLI:        true,
-		IncludeSystemNull: true,
+		IncludeCLI:        adapterOpts.IncludeCLI,
+		IncludeSystemNull: adapterOpts.IncludeSystemNull,
 	})
 	if err != nil {
 		components.cleanup()

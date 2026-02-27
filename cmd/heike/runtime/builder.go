@@ -11,6 +11,7 @@ type RuntimeBuilder interface {
 	WithContext(ctx context.Context) RuntimeBuilder
 	WithConfig(cfg *config.Config) RuntimeBuilder
 	WithWorkspace(workspaceID string) RuntimeBuilder
+	WithAdapterOptions(opts AdapterBuildOptions) RuntimeBuilder
 	Build() (*RuntimeComponents, error)
 }
 
@@ -18,10 +19,13 @@ type DefaultRuntimeBuilder struct {
 	ctx         context.Context
 	cfg         *config.Config
 	workspaceID string
+	adapterOpts AdapterBuildOptions
 }
 
 func NewRuntimeBuilder() RuntimeBuilder {
-	return &DefaultRuntimeBuilder{}
+	return &DefaultRuntimeBuilder{
+		adapterOpts: DefaultAdapterBuildOptions(),
+	}
 }
 
 func (b *DefaultRuntimeBuilder) WithContext(ctx context.Context) RuntimeBuilder {
@@ -39,6 +43,11 @@ func (b *DefaultRuntimeBuilder) WithWorkspace(workspaceID string) RuntimeBuilder
 	return b
 }
 
+func (b *DefaultRuntimeBuilder) WithAdapterOptions(opts AdapterBuildOptions) RuntimeBuilder {
+	b.adapterOpts = opts
+	return b
+}
+
 func (b *DefaultRuntimeBuilder) Build() (*RuntimeComponents, error) {
 	if b.ctx == nil {
 		b.ctx = context.Background()
@@ -52,7 +61,7 @@ func (b *DefaultRuntimeBuilder) Build() (*RuntimeComponents, error) {
 		b.workspaceID = DefaultWorkspaceID
 	}
 
-	components, err := NewRuntimeComponents(b.ctx, b.cfg, b.workspaceID)
+	components, err := NewRuntimeComponentsWithOptions(b.ctx, b.cfg, b.workspaceID, b.adapterOpts)
 	if err != nil {
 		return nil, err
 	}
