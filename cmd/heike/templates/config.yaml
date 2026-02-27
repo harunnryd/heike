@@ -72,19 +72,25 @@ server:
 # ============================================================================
 governance:
   # Tools that require user approval before execution
-  # Format: <tool-name>_<method>
+  # Format: <tool-name>
   require_approval:
     - exec_command
     - write_stdin
+    - apply_patch
 
   # Tools that are automatically allowed (safe operations)
-  # Format: <tool-name>_<method>
+  # Format: <tool-name>
   auto_allow:
     - time
     - search_query
     - open
     - click
     - find
+    - weather
+    - finance
+    - sports
+    - image_query
+    - screenshot
 
   # Time-to-live for idempotency check (duplicate event prevention)
   # Events with same ID within this period will be ignored
@@ -183,10 +189,46 @@ store:
 # ============================================================================
 tools:
   web:
+    # Base URL for search query requests
+    base_url: https://www.bing.com/search
     # HTTP timeout for web tools (open/search_query)
     timeout: 10s
     # Maximum response content length for open output
     max_content_length: 5000
+
+  weather:
+    # Base URL for weather lookups
+    base_url: https://wttr.in
+    # HTTP timeout for weather tool
+    timeout: 10s
+
+  finance:
+    # Base URL for market data lookups
+    base_url: https://query1.finance.yahoo.com/v7/finance/quote
+    # HTTP timeout for finance tool
+    timeout: 10s
+
+  sports:
+    # Base URL for sports schedules and standings
+    base_url: https://site.api.espn.com/apis/v2/sports
+    # HTTP timeout for sports tool
+    timeout: 10s
+
+  image_query:
+    # Base URL for image search metadata
+    base_url: https://commons.wikimedia.org/w/api.php
+    # HTTP timeout for image query tool
+    timeout: 10s
+
+  screenshot:
+    # Timeout for screenshot operations
+    timeout: 20s
+    # Rendering backend
+    renderer: pdftoppm
+
+  apply_patch:
+    # Patch application command
+    command: apply_patch
 
 # ============================================================================
 # Orchestrator Configuration
@@ -319,6 +361,7 @@ adapters:
 # HEIKE_SERVER_WRITE_TIMEOUT    - Override server.write_timeout
 # HEIKE_SERVER_IDLE_TIMEOUT     - Override server.idle_timeout
 # HEIKE_SERVER_SHUTDOWN_TIMEOUT - Override server.shutdown_timeout
+# HEIKE_GOVERNANCE_IDEMPOTENCY_TTL - Override governance.idempotency_ttl
 # HEIKE_GOVERNANCE_DAILY_TOOL_LIMIT - Override governance.daily_tool_limit
 # HEIKE_AUTH_CODEX_CALLBACK_ADDR - Override auth.codex.callback_addr
 # HEIKE_AUTH_CODEX_REDIRECT_URI - Override auth.codex.redirect_uri
@@ -337,8 +380,20 @@ adapters:
 # HEIKE_STORE_LOCK_MAX_RETRY - Override store.lock_max_retry
 # HEIKE_STORE_INBOX_SIZE - Override store.inbox_size
 # HEIKE_STORE_TRANSCRIPT_ROTATE_MAX_BYTES - Override store.transcript_rotate_max_bytes
+# HEIKE_TOOLS_WEB_BASE_URL      - Override tools.web.base_url
 # HEIKE_TOOLS_WEB_TIMEOUT       - Override tools.web.timeout
 # HEIKE_TOOLS_WEB_MAX_CONTENT_LENGTH - Override tools.web.max_content_length
+# HEIKE_TOOLS_WEATHER_BASE_URL  - Override tools.weather.base_url
+# HEIKE_TOOLS_WEATHER_TIMEOUT   - Override tools.weather.timeout
+# HEIKE_TOOLS_FINANCE_BASE_URL  - Override tools.finance.base_url
+# HEIKE_TOOLS_FINANCE_TIMEOUT   - Override tools.finance.timeout
+# HEIKE_TOOLS_SPORTS_BASE_URL   - Override tools.sports.base_url
+# HEIKE_TOOLS_SPORTS_TIMEOUT    - Override tools.sports.timeout
+# HEIKE_TOOLS_IMAGE_QUERY_BASE_URL - Override tools.image_query.base_url
+# HEIKE_TOOLS_IMAGE_QUERY_TIMEOUT  - Override tools.image_query.timeout
+# HEIKE_TOOLS_SCREENSHOT_TIMEOUT - Override tools.screenshot.timeout
+# HEIKE_TOOLS_SCREENSHOT_RENDERER - Override tools.screenshot.renderer
+# HEIKE_TOOLS_APPLY_PATCH_COMMAND - Override tools.apply_patch.command
 # HEIKE_ORCHESTRATOR_VERBOSE    - Override orchestrator.verbose
 # HEIKE_ORCHESTRATOR_MAX_SUB_TASKS - Override orchestrator.max_sub_tasks
 # HEIKE_ORCHESTRATOR_MAX_TOOLS_PER_TURN - Override orchestrator.max_tools_per_turn
@@ -368,8 +423,11 @@ adapters:
 # HEIKE_DAEMON_WORKSPACE_PATH - Override daemon.workspace_path
 # HEIKE_ADAPTERS_SLACK_ENABLED   - Override adapters.slack.enabled
 # HEIKE_ADAPTERS_SLACK_PORT      - Override adapters.slack.port
+# HEIKE_ADAPTERS_SLACK_SIGNING_SECRET - Override adapters.slack.signing_secret
+# HEIKE_ADAPTERS_SLACK_BOT_TOKEN - Override adapters.slack.bot_token
 # HEIKE_ADAPTERS_TELEGRAM_ENABLED - Override adapters.telegram.enabled
 # HEIKE_ADAPTERS_TELEGRAM_UPDATE_TIMEOUT - Override adapters.telegram.update_timeout
+# HEIKE_ADAPTERS_TELEGRAM_BOT_TOKEN - Override adapters.telegram.bot_token
 # ============================================================================
 # API Keys (prefer these over inline config values)
 # ============================================================================
