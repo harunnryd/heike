@@ -1,0 +1,30 @@
+tools:
+  - name: "codebase_stats"
+    language: "python"
+    script: "codebase_stats.py"
+    description: "Return deterministic codebase file and line statistics grouped by extension."
+    source: "skill"
+    risk: "low"
+    sandbox: "basic"
+    capabilities:
+      - "workspace.inspect"
+      - "filesystem.read"
+      - "text.analyze"
+    parameters:
+      type: "object"
+      properties:
+        root:
+          type: "string"
+          description: "Optional subdirectory to scan. Defaults to workspace root."
+        max_depth:
+          type: "integer"
+          description: "Maximum directory depth from scan root. Default 6."
+        top_extensions:
+          type: "integer"
+          description: "How many extension groups to return. Default 10."
+        include_hidden:
+          type: "boolean"
+          description: "Include hidden files and directories (dot-prefixed). Default false."
+        max_files:
+          type: "integer"
+          description: "Maximum files to scan before truncating. Default 5000."

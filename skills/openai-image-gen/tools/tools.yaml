@@ -1,0 +1,42 @@
+tools:
+  - name: "openai_image_gen"
+    language: "python"
+    script: "gen.py"
+    description: "Generate image batches with OpenAI Images API and return output artifact paths."
+    source: "skill"
+    risk: "medium"
+    sandbox: "basic"
+    capabilities:
+      - "image.generate"
+      - "file.write"
+      - "http.post"
+    parameters:
+      type: "object"
+      properties:
+        prompt:
+          type: "string"
+          description: "Single prompt. Empty means random prompt generation."
+        count:
+          type: "integer"
+          description: "Number of images to generate. Runtime default is 1 when omitted."
+        model:
+          type: "string"
+          description: "Image model id (e.g. gpt-image-1, gpt-image-1.5, dall-e-3)."
+        size:
+          type: "string"
+          description: "Image size override."
+        quality:
+          type: "string"
+          description: "Quality override."
+        background:
+          type: "string"
+          description: "GPT image models only: transparent, opaque, auto."
+        output_format:
+          type: "string"
+          description: "GPT image models only: png, jpeg, webp."
+        style:
+          type: "string"
+          description: "dall-e-3 style: vivid or natural."
+        out_dir:
+          type: "string"
+          description: "Output directory override."

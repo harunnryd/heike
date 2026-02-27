@@ -1,0 +1,379 @@
+# Heike Configuration File
+# Place this file at: ~/.heike/config.yaml
+# Environment variables override values in this file (prefix: HEIKE_)
+
+# ============================================================================
+# Model Configuration
+# ============================================================================
+models:
+  # Default model to use for all operations
+  # Must match one of the model names in the registry below
+  default: gpt-4-turbo
+
+  # Fallback model to use when default model fails
+  # Leave empty to disable fallback
+  fallback: claude-3-haiku
+
+  # Embedding model used by memory retrieval/storage
+  # Must exist in registry and support embeddings
+  embedding: nomic-embed-text
+
+  # Maximum attempts for completion with fallback strategy
+  max_fallback_attempts: 2
+
+  # Model registry: Available models that can be used
+  # Each model must have a unique name and provider
+  registry:
+    - name: gpt-4-turbo
+      provider: openai
+      # api_key: "sk-..."  # Prefer OPENAI_API_KEY environment variable
+
+    - name: claude-3-haiku
+      provider: anthropic
+      # api_key: "sk-ant-..."  # Prefer ANTHROPIC_API_KEY environment variable
+
+    - name: gemini-2.0-flash
+      provider: gemini
+      # api_key: "..."  # Prefer GEMINI_API_KEY environment variable
+
+    - name: glm-5
+      provider: zai
+      # api_key: "..."  # Prefer ZAI_API_KEY environment variable
+
+    - name: local-llama
+      provider: ollama
+      base_url: http://localhost:11434/v1
+      # api_key: "ollama"  # Default for Ollama (can be overridden)
+
+    - name: gpt-5.2-codex
+      provider: openai-codex
+      # auth_file: ~/.heike/auth/codex.json
+      # request_timeout: 120s
+      # embedding_input_max_chars: 8000
+
+# ============================================================================
+# Server Configuration
+# ============================================================================
+server:
+  # HTTP server port
+  port: 8080
+
+  # Log level: debug, info, warn, error
+  log_level: info
+
+  # HTTP server timeouts
+  read_timeout: 10s
+  write_timeout: 10s
+  idle_timeout: 60s
+  shutdown_timeout: 5s
+
+# ============================================================================
+# Governance Configuration
+# ============================================================================
+governance:
+  # Tools that require user approval before execution
+  # Format: <tool-name>_<method>
+  require_approval:
+    - exec_command
+    - write_stdin
+
+  # Tools that are automatically allowed (safe operations)
+  # Format: <tool-name>_<method>
+  auto_allow:
+    - time
+    - search_query
+    - open
+    - click
+    - find
+
+  # Time-to-live for idempotency check (duplicate event prevention)
+  # Events with same ID within this period will be ignored
+  idempotency_ttl: 24h
+
+  # Daily per-tool execution limit
+  daily_tool_limit: 100
+
+# ============================================================================
+# Auth Configuration
+# ============================================================================
+auth:
+  codex:
+    # Local callback listen address for OAuth flow
+    callback_addr: localhost:1455
+
+    # Redirect URI registered for Codex OAuth flow
+    redirect_uri: http://localhost:1455/auth/callback
+
+    # Max wait time for OAuth callback
+    oauth_timeout: 5m
+
+    # File path to store Codex OAuth token
+    token_path: ~/.heike/auth/codex.json
+
+# ============================================================================
+# Prompt Configuration
+# ============================================================================
+prompts:
+  planner:
+    # Planner system instruction
+    system: "You are a strategic planning agent. Create a concise, step-by-step plan to achieve the goal."
+    # Planner output format instruction
+    output: "Output the plan as a JSON array of objects with 'id' and 'description' fields. Do not include other text."
+
+  thinker:
+    # Thinker system instruction
+    system: "You are Heike, an intelligent agent executing a task."
+    # Thinker behavior instruction
+    instruction: "Think step-by-step. If you need to use a tool, do so. If you have the final answer, provide it clearly."
+
+  reflector:
+    # Reflector system instruction
+    system: "You are a reflective agent. Analyze the last action and its result."
+    # Reflector output guidelines (must produce JSON with next_action)
+    guidelines: |
+      Analyze what happened. Did it succeed? What did we learn? What should be the next step?
+
+      Return a JSON object with:
+      - "analysis": string (your reasoning)
+      - "next_action": string ("continue", "retry", "replan", "stop")
+      - "new_memories": array of strings (facts to remember)
+
+      Guidelines:
+      - "retry": if the tool failed transiently.
+      - "replan": if the current plan is impossible or invalid.
+      - "stop": if the goal is achieved or impossible.
+      - "continue": otherwise.
+
+  decomposer:
+    # Decomposer system instruction
+    system: "You are a task decomposition expert. Break down the following high-level goal into a list of specific, executable sub-tasks."
+    # Decomposer requirements instruction
+    requirements: |
+      Requirements:
+      1. Each sub-task must be clear and actionable.
+      2. Return the result as a JSON array of objects with:
+         - 'id' (string): unique identifier
+         - 'description' (string): actionable instruction
+         - 'priority' (int): 1 (high) to 5 (low)
+         - 'dependencies' (array of strings): list of IDs that must be completed BEFORE this task can start.
+      3. Analyze dependencies carefully. If Task B requires output from Task A, Task B must list Task A's ID in 'dependencies'.
+      4. Do not include markdown formatting or explanations, just the raw JSON.
+
+# ============================================================================
+# Store Configuration
+# ============================================================================
+store:
+  # File lock acquisition timeout per workspace
+  lock_timeout: 30s
+
+  # Retry interval between file lock attempts
+  lock_retry: 100ms
+
+  # Maximum retries before lock acquisition fails
+  lock_max_retry: 300
+
+  # Single-writer inbox channel size
+  inbox_size: 100
+
+  # Rotate transcript when file exceeds this size (bytes)
+  transcript_rotate_max_bytes: 10485760
+
+# ============================================================================
+# Tool Configuration
+# ============================================================================
+tools:
+  web:
+    # HTTP timeout for web tools (open/search_query)
+    timeout: 10s
+    # Maximum response content length for open output
+    max_content_length: 5000
+
+# ============================================================================
+# Orchestrator Configuration
+# ============================================================================
+orchestrator:
+  # Enable verbose logging for orchestrator operations
+  verbose: false
+
+  # Maximum number of parallel sub-tasks for complex task decomposition
+  max_sub_tasks: 10
+
+  # Maximum number of tools exposed to model per turn
+  max_tools_per_turn: 12
+
+  # Maximum cognitive loop turns per request
+  max_turns: 10
+
+  # Cognitive context token budget
+  token_budget: 8000
+
+  # Minimum word count to trigger task decomposition
+  decompose_word_threshold: 20
+
+  # Number of recent transcript lines loaded into session context
+  session_history_limit: 20
+
+  # Maximum retry attempts per sub-task in DAG coordinator
+  subtask_retry_max: 3
+
+  # Base backoff duration for sub-task retries
+  subtask_retry_backoff: 1s
+
+# ============================================================================
+# Ingress Configuration
+# ============================================================================
+ingress:
+  # Queue size for interactive events (blocking execution)
+  interactive_queue_size: 100
+
+  # Queue size for background events (non-blocking execution)
+  background_queue_size: 1000
+
+  # Backpressure timeout for interactive queue submit
+  interactive_submit_timeout: 500ms
+
+  # Graceful drain timeout when ingress closes
+  drain_timeout: 5s
+
+  # Poll interval while draining ingress queue
+  drain_poll_interval: 100ms
+
+# ============================================================================
+# Worker Configuration
+# ============================================================================
+worker:
+  # Graceful shutdown timeout for lane workers
+  shutdown_timeout: 30s
+
+# ============================================================================
+# Scheduler Configuration
+# ============================================================================
+scheduler:
+  # Tick interval for cron scanning loop
+  tick_interval: 1m
+
+  # Graceful shutdown timeout for scheduler loop
+  shutdown_timeout: 30s
+
+  # Lease duration for in-flight scheduled tasks
+  lease_duration: 5m
+
+  # Maximum missed runs before emitting catch-up warning event
+  max_catchup_runs: 1
+
+  # Poll interval while waiting in-flight tasks during shutdown
+  in_flight_poll_interval: 100ms
+
+  # Workspace metadata used for scheduler system events
+  heartbeat_workspace_id: default
+
+# ============================================================================
+# Daemon Configuration
+# ============================================================================
+daemon:
+  # Graceful shutdown timeout for daemon stop sequence
+  shutdown_timeout: 30s
+
+  # Interval for periodic component health checks
+  health_check_interval: 30s
+
+  # Timeout budget for rollback shutdown when startup fails
+  startup_shutdown_timeout: 10s
+
+  # Timeout budget for pre-init checks before component initialization
+  preflight_timeout: 10s
+
+  # TTL for stale lock cleanup during daemon pre-init
+  stale_lock_ttl: 15m
+
+  # Root workspace path for runtime data
+  workspace_path: ~/.heike/workspaces
+
+# ============================================================================
+# Adapter Configuration
+# ============================================================================
+adapters:
+  # Slack adapter for receiving events from Slack
+  slack:
+    enabled: false
+    port: 3000
+    # signing_secret: "..."  # Slack signing secret (use HEIKE_ADAPTERS_SLACK_SIGNING_SECRET)
+    # bot_token: "xoxb-..."  # Slack bot token (use HEIKE_ADAPTERS_SLACK_BOT_TOKEN)
+
+  # Telegram adapter for receiving events from Telegram
+  telegram:
+    enabled: false
+    # Long-poll timeout (seconds) for Telegram updates
+    update_timeout: 60
+    # bot_token: "..."  # Telegram bot token (use HEIKE_ADAPTERS_TELEGRAM_BOT_TOKEN)
+# ============================================================================
+# Environment Variables Reference
+# ============================================================================
+# HEIKE_MODELS_DEFAULT          - Override models.default
+# HEIKE_MODELS_FALLBACK        - Override models.fallback
+# HEIKE_MODELS_EMBEDDING       - Override models.embedding
+# HEIKE_MODELS_MAX_FALLBACK_ATTEMPTS - Override models.max_fallback_attempts
+# HEIKE_SERVER_PORT             - Override server.port
+# HEIKE_SERVER_LOG_LEVEL        - Override server.log_level
+# HEIKE_SERVER_READ_TIMEOUT     - Override server.read_timeout
+# HEIKE_SERVER_WRITE_TIMEOUT    - Override server.write_timeout
+# HEIKE_SERVER_IDLE_TIMEOUT     - Override server.idle_timeout
+# HEIKE_SERVER_SHUTDOWN_TIMEOUT - Override server.shutdown_timeout
+# HEIKE_GOVERNANCE_DAILY_TOOL_LIMIT - Override governance.daily_tool_limit
+# HEIKE_AUTH_CODEX_CALLBACK_ADDR - Override auth.codex.callback_addr
+# HEIKE_AUTH_CODEX_REDIRECT_URI - Override auth.codex.redirect_uri
+# HEIKE_AUTH_CODEX_OAUTH_TIMEOUT - Override auth.codex.oauth_timeout
+# HEIKE_AUTH_CODEX_TOKEN_PATH - Override auth.codex.token_path
+# HEIKE_PROMPTS_PLANNER_SYSTEM - Override prompts.planner.system
+# HEIKE_PROMPTS_PLANNER_OUTPUT - Override prompts.planner.output
+# HEIKE_PROMPTS_THINKER_SYSTEM - Override prompts.thinker.system
+# HEIKE_PROMPTS_THINKER_INSTRUCTION - Override prompts.thinker.instruction
+# HEIKE_PROMPTS_REFLECTOR_SYSTEM - Override prompts.reflector.system
+# HEIKE_PROMPTS_REFLECTOR_GUIDELINES - Override prompts.reflector.guidelines
+# HEIKE_PROMPTS_DECOMPOSER_SYSTEM - Override prompts.decomposer.system
+# HEIKE_PROMPTS_DECOMPOSER_REQUIREMENTS - Override prompts.decomposer.requirements
+# HEIKE_STORE_LOCK_TIMEOUT - Override store.lock_timeout
+# HEIKE_STORE_LOCK_RETRY - Override store.lock_retry
+# HEIKE_STORE_LOCK_MAX_RETRY - Override store.lock_max_retry
+# HEIKE_STORE_INBOX_SIZE - Override store.inbox_size
+# HEIKE_STORE_TRANSCRIPT_ROTATE_MAX_BYTES - Override store.transcript_rotate_max_bytes
+# HEIKE_TOOLS_WEB_TIMEOUT       - Override tools.web.timeout
+# HEIKE_TOOLS_WEB_MAX_CONTENT_LENGTH - Override tools.web.max_content_length
+# HEIKE_ORCHESTRATOR_VERBOSE    - Override orchestrator.verbose
+# HEIKE_ORCHESTRATOR_MAX_SUB_TASKS - Override orchestrator.max_sub_tasks
+# HEIKE_ORCHESTRATOR_MAX_TOOLS_PER_TURN - Override orchestrator.max_tools_per_turn
+# HEIKE_ORCHESTRATOR_MAX_TURNS - Override orchestrator.max_turns
+# HEIKE_ORCHESTRATOR_TOKEN_BUDGET - Override orchestrator.token_budget
+# HEIKE_ORCHESTRATOR_DECOMPOSE_WORD_THRESHOLD - Override orchestrator.decompose_word_threshold
+# HEIKE_ORCHESTRATOR_SESSION_HISTORY_LIMIT - Override orchestrator.session_history_limit
+# HEIKE_ORCHESTRATOR_SUBTASK_RETRY_MAX - Override orchestrator.subtask_retry_max
+# HEIKE_ORCHESTRATOR_SUBTASK_RETRY_BACKOFF - Override orchestrator.subtask_retry_backoff
+# HEIKE_INGRESS_INTERACTIVE_QUEUE_SIZE - Override ingress.interactive_queue_size
+# HEIKE_INGRESS_BACKGROUND_QUEUE_SIZE  - Override ingress.background_queue_size
+# HEIKE_INGRESS_INTERACTIVE_SUBMIT_TIMEOUT - Override ingress.interactive_submit_timeout
+# HEIKE_INGRESS_DRAIN_TIMEOUT - Override ingress.drain_timeout
+# HEIKE_INGRESS_DRAIN_POLL_INTERVAL - Override ingress.drain_poll_interval
+# HEIKE_WORKER_SHUTDOWN_TIMEOUT - Override worker.shutdown_timeout
+# HEIKE_SCHEDULER_TICK_INTERVAL - Override scheduler.tick_interval
+# HEIKE_SCHEDULER_SHUTDOWN_TIMEOUT - Override scheduler.shutdown_timeout
+# HEIKE_SCHEDULER_LEASE_DURATION - Override scheduler.lease_duration
+# HEIKE_SCHEDULER_MAX_CATCHUP_RUNS - Override scheduler.max_catchup_runs
+# HEIKE_SCHEDULER_IN_FLIGHT_POLL_INTERVAL - Override scheduler.in_flight_poll_interval
+# HEIKE_SCHEDULER_HEARTBEAT_WORKSPACE_ID - Override scheduler.heartbeat_workspace_id
+# HEIKE_DAEMON_SHUTDOWN_TIMEOUT - Override daemon.shutdown_timeout
+# HEIKE_DAEMON_HEALTH_CHECK_INTERVAL - Override daemon.health_check_interval
+# HEIKE_DAEMON_STARTUP_SHUTDOWN_TIMEOUT - Override daemon.startup_shutdown_timeout
+# HEIKE_DAEMON_PREFLIGHT_TIMEOUT - Override daemon.preflight_timeout
+# HEIKE_DAEMON_STALE_LOCK_TTL - Override daemon.stale_lock_ttl
+# HEIKE_DAEMON_WORKSPACE_PATH - Override daemon.workspace_path
+# HEIKE_ADAPTERS_SLACK_ENABLED   - Override adapters.slack.enabled
+# HEIKE_ADAPTERS_SLACK_PORT      - Override adapters.slack.port
+# HEIKE_ADAPTERS_TELEGRAM_ENABLED - Override adapters.telegram.enabled
+# HEIKE_ADAPTERS_TELEGRAM_UPDATE_TIMEOUT - Override adapters.telegram.update_timeout
+# ============================================================================
+# API Keys (prefer these over inline config values)
+# ============================================================================
+# OPENAI_API_KEY        - OpenAI API key
+# ANTHROPIC_API_KEY     - Anthropic API key
+# GEMINI_API_KEY        - Google Gemini API key
+# ZAI_API_KEY           - Zai API key

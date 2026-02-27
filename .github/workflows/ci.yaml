@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: go.mod
+
+    - name: Verify Dependencies
+      run: go mod verify
+
+    - name: AGENTS Contract Guard
+      run: ./scripts/ci/agents_guard.sh
+
+    - name: Build
+      run: go build -v ./...
+
+    - name: Run Tests
+      env:
+        HEIKE_RUN_E2E: "0"
+      run: go test -v ./...
+
+    - name: Vet
+      run: go vet ./...
+
+    - name: CLI Smoke Test
+      run: |
+        export HOME="$(mktemp -d)"
+        go build -o ./bin/heike ./cmd/heike
+        ./bin/heike version
+        ./bin/heike config init
+        ./bin/heike config view > /tmp/heike-config.yaml
+        test -s /tmp/heike-config.yaml

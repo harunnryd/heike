@@ -1,0 +1,10 @@
+FROM gcr.io/distroless/static-debian12:nonroot
+
+WORKDIR /app
+
+COPY heike /usr/local/bin/heike
+
+EXPOSE 8080
+
+ENTRYPOINT ["/usr/local/bin/heike"]
+CMD ["daemon"]

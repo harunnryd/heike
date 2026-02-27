@@ -1,0 +1,95 @@
+# =========================
+# Go build artifacts
+# =========================
+bin/
+build/
+dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Go coverage
+coverage.out
+*.coverprofile
+
+# Go workspace
+go.work
+go.work.sum
+
+# =========================
+# Logs
+# =========================
+*.log
+logs/
+
+# =========================
+# Runtime state (local dev)
+# =========================
+.heike/
+.heike
+.heike_test/
+test/
+tmp/
+temp/
+sandbox/
+
+# If running workspace inside repo during dev
+workspaces/
+sessions/
+governance/
+
+# SQLite (if used in future)
+*.db
+*.sqlite
+*.sqlite3
+
+# =========================
+# OS junk
+# =========================
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Icon?
+._*
+
+# =========================
+# Editor / IDE
+# =========================
+.vscode/
+.idea/
+*.swp
+*.swo
+*.bak
+*.tmp
+
+# =========================
+# Node / Tauri (if added later)
+# =========================
+node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+dist-tauri/
+
+# =========================
+# Secrets
+# =========================
+.env
+.env.*
+*.key
+*.pem
+config.local.yaml
+/config.yaml
+/config_*.yaml
+
+# =========================
+# Test artifacts
+# =========================
+testdata/tmp/
+
+# Root binary artifact from local build
+/heike

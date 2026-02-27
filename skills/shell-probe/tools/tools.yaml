@@ -1,0 +1,14 @@
+tools:
+  - name: "repo_snapshot"
+    language: "shell"
+    script: "repo_snapshot.sh"
+    description: "Return a lightweight workspace snapshot as JSON."
+    source: "skill"
+    risk: "low"
+    sandbox: "basic"
+    capabilities:
+      - "workspace.inspect"
+      - "filesystem.read"
+    parameters:
+      type: "object"
+      properties: {}

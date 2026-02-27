@@ -1,0 +1,88 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: go.mod
+
+    - name: AGENTS Contract Guard
+      run: ./scripts/ci/agents_guard.sh
+
+    - name: Run tests
+      env:
+        HEIKE_RUN_E2E: "0"
+      run: go test -v ./...
+
+  build:
+    needs: verify
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goos: [linux, darwin]
+        goarch: [amd64, arm64]
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: go.mod
+
+    - name: Build release archive
+      env:
+        VERSION: ${{ github.ref_name }}
+        COMMIT: ${{ github.sha }}
+        GOOS: ${{ matrix.goos }}
+        GOARCH: ${{ matrix.goarch }}
+      run: |
+        set -euo pipefail
+        mkdir -p dist
+        BUILD_DATE="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+        LD_FLAGS="-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${BUILD_DATE}"
+        CGO_ENABLED=0 GOOS="${GOOS}" GOARCH="${GOARCH}" go build -trimpath -ldflags "${LD_FLAGS}" -o dist/heike ./cmd/heike
+        tar -C dist -czf "dist/heike_${GOOS}_${GOARCH}.tar.gz" heike
+        rm -f dist/heike
+
+    - name: Upload archive
+      uses: actions/upload-artifact@v4
+      with:
+        name: heike-${{ matrix.goos }}-${{ matrix.goarch }}
+        path: dist/heike_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz
+        if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - name: Download archives
+      uses: actions/download-artifact@v4
+      with:
+        path: dist
+        merge-multiple: true
+
+    - name: Generate checksums
+      run: |
+        set -euo pipefail
+        cd dist
+        sha256sum heike_*.tar.gz > checksums.txt
+
+    - name: Publish GitHub release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          dist/heike_*.tar.gz
+          dist/checksums.txt
