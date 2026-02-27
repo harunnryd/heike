@@ -29,7 +29,7 @@ var skillCmd = &cobra.Command{
 var skillInstallCmd = &cobra.Command{
 	Use:   "install [path]",
 	Short: "Install an external skill from path",
-	Long:  `Install an external skill into ./.heike/skills. Bundled skills under ./skills are auto-loaded and do not need installation.`,
+	Long:  `Install an external skill into the runtime project skill source. Bundled skills are auto-loaded and do not need installation.`,
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		sourceDir, skillFile, err := resolveSkillSource(args[0])
@@ -52,7 +52,7 @@ var skillInstallCmd = &cobra.Command{
 		}
 		bundledSkillsRoot, _ := skillSourcePathByKind(skillSources, discovery.SourceBundled)
 		if bundledSkillsRoot != "" && pathWithinDir(sourceDir, bundledSkillsRoot) {
-			return fmt.Errorf("skill %q is bundled in ./skills and auto-loaded; install is only for external skills", parsedSkill.Name)
+			return fmt.Errorf("skill %q is in bundled runtime source and auto-loaded; install is only for external skills", parsedSkill.Name)
 		}
 		fmt.Printf("Installing skill from: %s\n", sourceDir)
 
