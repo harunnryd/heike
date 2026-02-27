@@ -1,12 +1,12 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/harunnryd/heike/internal/config"
@@ -16,9 +16,6 @@ import (
 	"github.com/harunnryd/heike/internal/skill/formatter"
 	"github.com/harunnryd/heike/internal/skill/loader"
 	"github.com/harunnryd/heike/internal/skill/parser"
-	"github.com/harunnryd/heike/internal/skill/repository"
-	"github.com/harunnryd/heike/internal/skill/service"
-	"github.com/harunnryd/heike/internal/tool"
 
 	"github.com/spf13/cobra"
 )
@@ -49,13 +46,21 @@ var skillInstallCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("failed to get working directory: %w", err)
 		}
-		bundledSkillsRoot := filepath.Join(wd, "skills")
-		if pathWithinDir(sourceDir, bundledSkillsRoot) {
+		skillSources, err := resolveRuntimeSkillSources(wd)
+		if err != nil {
+			return fmt.Errorf("resolve runtime skill sources: %w", err)
+		}
+		bundledSkillsRoot, _ := skillSourcePathByKind(skillSources, discovery.SourceBundled)
+		if bundledSkillsRoot != "" && pathWithinDir(sourceDir, bundledSkillsRoot) {
 			return fmt.Errorf("skill %q is bundled in ./skills and auto-loaded; install is only for external skills", parsedSkill.Name)
 		}
 		fmt.Printf("Installing skill from: %s\n", sourceDir)
 
-		installedPath := filepath.Join(wd, ".heike", "skills", parsedSkill.Name)
+		projectSkillsRoot, ok := skillSourcePathByKind(skillSources, discovery.SourceProject)
+		if !ok {
+			return fmt.Errorf("runtime project skill source is not configured")
+		}
+		installedPath := filepath.Join(projectSkillsRoot, parsedSkill.Name)
 		if _, err := os.Stat(installedPath); err == nil {
 			return fmt.Errorf("skill already installed: %s", parsedSkill.Name)
 		} else if err != nil && !os.IsNotExist(err) {
@@ -97,7 +102,15 @@ var skillUninstallCmd = &cobra.Command{
 			return fmt.Errorf("failed to get working directory: %w", err)
 		}
 
-		skillPath := filepath.Join(wd, ".heike", "skills", skillName)
+		skillSources, err := resolveRuntimeSkillSources(wd)
+		if err != nil {
+			return fmt.Errorf("resolve runtime skill sources: %w", err)
+		}
+		projectSkillsRoot, ok := skillSourcePathByKind(skillSources, discovery.SourceProject)
+		if !ok {
+			return fmt.Errorf("runtime project skill source is not configured")
+		}
+		skillPath := filepath.Join(projectSkillsRoot, skillName)
 		if _, err := os.Stat(skillPath); os.IsNotExist(err) {
 			return fmt.Errorf("skill not found: %s", skillName)
 		}
@@ -127,25 +140,15 @@ var skillSearchCmd = &cobra.Command{
 			return fmt.Errorf("failed to get working directory: %w", err)
 		}
 
-		toolLoader := loader.NewToolLoader()
-		sources, err := discovery.ResolveToolSources(discovery.ResolveOptions{
-			Order:             runtimeToolDiscoveryOrder(),
-			WorkspaceID:       config.DefaultWorkspaceID,
-			WorkspaceRootPath: runtimeWorkspaceRootPath(),
-			WorkspacePath:     wd,
-			ProjectPath:       runtimeProjectPath(),
-		})
+		skillRegistry, warnings, err := loadRuntimeSkillRegistry(wd)
 		if err != nil {
-			return fmt.Errorf("resolve runtime tool sources: %w", err)
+			return fmt.Errorf("load runtime skills: %w", err)
 		}
+		printSkillLoadWarnings(warnings)
 
-		var allSkills []*tool.CustomTool
-		for _, source := range sources {
-			tools, err := toolLoader.LoadFromSource(source.Path)
-			if err != nil {
-				return fmt.Errorf("failed to load tools from %s (%s): %w", source.Kind, source.Path, err)
-			}
-			allSkills = append(allSkills, tools...)
+		allSkills, err := skillRegistry.GetRelevant(query, 0)
+		if err != nil {
+			return fmt.Errorf("search skills: %w", err)
 		}
 
 		if len(allSkills) == 0 {
@@ -153,27 +156,12 @@ var skillSearchCmd = &cobra.Command{
 			return nil
 		}
 
-		filtered := make([]int, 0, len(allSkills))
-		for idx, ct := range allSkills {
-			if ct == nil {
+		fmt.Println("=== Search Results ===")
+		for _, item := range allSkills {
+			if item == nil {
 				continue
 			}
-			name := strings.ToLower(strings.TrimSpace(ct.Name))
-			desc := strings.ToLower(strings.TrimSpace(ct.Description))
-			if strings.Contains(name, query) || strings.Contains(desc, query) {
-				filtered = append(filtered, idx)
-			}
-		}
-
-		if len(filtered) == 0 {
-			fmt.Printf("No skills matched query: %s\n", args[0])
-			return nil
-		}
-
-		fmt.Println("=== Search Results ===")
-		for _, idx := range filtered {
-			ct := allSkills[idx]
-			fmt.Printf("  - %s: %s\n", ct.Name, ct.Description)
+			fmt.Printf("  - %s: %s\n", item.Name, item.Description)
 		}
 
 		return nil
@@ -193,12 +181,13 @@ var skillShowCmd = &cobra.Command{
 			return fmt.Errorf("failed to get working directory: %w", err)
 		}
 
-		skillPath := filepath.Join(wd, "skills", skillName, "SKILL.md")
-		if _, err := os.Stat(skillPath); os.IsNotExist(err) {
-			skillPath = filepath.Join(wd, ".heike", "skills", skillName, "SKILL.md")
-			if _, err := os.Stat(skillPath); os.IsNotExist(err) {
-				return fmt.Errorf("skill not found: %s", skillName)
-			}
+		skillSources, err := resolveRuntimeSkillSources(wd)
+		if err != nil {
+			return fmt.Errorf("resolve runtime skill sources: %w", err)
+		}
+		skillPath, err := resolveRuntimeSkillPath(skillName, skillSources)
+		if err != nil {
+			return fmt.Errorf("skill not found: %s", skillName)
 		}
 
 		fmt.Printf("=== Skill Details: %s ===\n", skillName)
@@ -250,9 +239,13 @@ var skillTestCmd = &cobra.Command{
 			return fmt.Errorf("failed to get working directory: %w", err)
 		}
 
-		skillPath := filepath.Join(wd, "skills", skillName, "SKILL.md")
-		if _, err := os.Stat(skillPath); os.IsNotExist(err) {
-			return fmt.Errorf("skill not found at %s\n\nValid skills directory structure:\n  ./skills/<skill_name>/SKILL.md", skillPath)
+		skillSources, err := resolveRuntimeSkillSources(wd)
+		if err != nil {
+			return fmt.Errorf("resolve runtime skill sources: %w", err)
+		}
+		skillPath, err := resolveRuntimeSkillPath(skillName, skillSources)
+		if err != nil {
+			return fmt.Errorf("skill not found: %s", skillName)
 		}
 
 		fmt.Printf("Testing skill at: %s\n", skillPath)
@@ -268,22 +261,17 @@ var skillTestCmd = &cobra.Command{
 			return fmt.Errorf("skill validation failed: %w", err)
 		}
 
-		skillsDir := filepath.Join(wd, "skills")
-		skillRepo := repository.NewFileSkillRepository(skillsDir)
-		skillService := service.NewSkillService(skillRepo)
-
-		ctx := context.Background()
-		if err := skillService.LoadSkills(ctx); err != nil {
-			return fmt.Errorf("failed to load skills: %w", err)
+		skillRegistry, warnings, err := loadRuntimeSkillRegistry(wd)
+		if err != nil {
+			return fmt.Errorf("load runtime skills: %w", err)
 		}
+		printSkillLoadWarnings(warnings)
 
-		skillID := domain.SkillID(skillName)
-		loadedSkill, err := skillService.GetSkill(ctx, skillID)
+		loadedSkill, err := skillRegistry.Get(skillName)
 		if err != nil {
 			return fmt.Errorf("skill '%s' not found: %w", skillName, err)
 		}
-
-		if loadedSkill.Name != skillName {
+		if loadedSkill == nil || loadedSkill.Name != skillName {
 			return fmt.Errorf("skill name mismatch: expected %s, got %s", skillName, loadedSkill.Name)
 		}
 
@@ -305,31 +293,18 @@ var skillLsCmd = &cobra.Command{
 			return fmt.Errorf("failed to get working directory: %w", err)
 		}
 
-		skillsDir := filepath.Join(wd, "skills")
-		if _, err := os.Stat(skillsDir); os.IsNotExist(err) {
-			fmt.Println("No skills directory found.")
-			fmt.Println("\nTo add skills, create a ./skills directory with following structure:")
-			fmt.Println("  ./skills/<skill_name>/SKILL.md")
-			return nil
+		skillRegistry, warnings, err := loadRuntimeSkillRegistry(wd)
+		if err != nil {
+			return fmt.Errorf("load runtime skills: %w", err)
 		}
+		printSkillLoadWarnings(warnings)
 
-		skillRepo := repository.NewFileSkillRepository(skillsDir)
-		skillService := service.NewSkillService(skillRepo)
-
-		ctx := context.Background()
-		if err := skillService.LoadSkills(ctx); err != nil {
-			return fmt.Errorf("failed to load skills: %w", err)
-		}
-
-		skills, err := skillService.ListSkills(ctx, repository.SkillFilter{
-			SortBy:    "name",
-			SortOrder: "asc",
-		})
+		skills, err := listRuntimeDomainSkills(skillRegistry)
 		if err != nil {
 			return fmt.Errorf("failed to list skills: %w", err)
 		}
 		if len(skills) == 0 {
-			fmt.Println("No skills found in ./skills directory.")
+			fmt.Println("No skills found in runtime sources.")
 			return nil
 		}
 
@@ -455,11 +430,11 @@ func init() {
 	rootCmd.AddCommand(skillCmd)
 }
 
-func runtimeToolDiscoveryOrder() []string {
-	if cfg == nil || len(cfg.Discovery.ToolSources) == 0 {
-		return []string{"global", "bundled", "workspace", "project"}
+func runtimeSkillDiscoveryOrder() []string {
+	if cfg == nil || len(cfg.Discovery.SkillSources) == 0 {
+		return []string{"bundled", "global", "workspace", "project"}
 	}
-	return append([]string(nil), cfg.Discovery.ToolSources...)
+	return append([]string(nil), cfg.Discovery.SkillSources...)
 }
 
 func runtimeWorkspaceRootPath() string {
@@ -474,4 +449,119 @@ func runtimeProjectPath() string {
 		return ""
 	}
 	return cfg.Discovery.ProjectPath
+}
+
+func resolveRuntimeSkillSources(workspacePath string) ([]discovery.SourceDescriptor, error) {
+	return discovery.ResolveSkillSources(discovery.ResolveOptions{
+		Order:             runtimeSkillDiscoveryOrder(),
+		WorkspaceID:       config.DefaultWorkspaceID,
+		WorkspaceRootPath: runtimeWorkspaceRootPath(),
+		WorkspacePath:     workspacePath,
+		ProjectPath:       runtimeProjectPath(),
+	})
+}
+
+func skillSourcePathByKind(sources []discovery.SourceDescriptor, kind discovery.SourceKind) (string, bool) {
+	var resolved string
+	for _, source := range sources {
+		if source.Kind != kind {
+			continue
+		}
+		resolved = strings.TrimSpace(source.Path)
+	}
+	if resolved == "" {
+		return "", false
+	}
+	return resolved, true
+}
+
+func resolveRuntimeSkillPath(skillName string, sources []discovery.SourceDescriptor) (string, error) {
+	name := strings.TrimSpace(skillName)
+	if name == "" {
+		return "", fmt.Errorf("skill name cannot be empty")
+	}
+
+	resolved := ""
+	for _, source := range sources {
+		candidate := filepath.Join(source.Path, name, "SKILL.md")
+		if _, err := os.Stat(candidate); err == nil {
+			resolved = candidate
+		}
+	}
+	if resolved == "" {
+		return "", fmt.Errorf("skill not found: %s", name)
+	}
+	return resolved, nil
+}
+
+func loadRuntimeSkillRegistry(workspacePath string) (*skillmodel.Registry, []error, error) {
+	sources, err := resolveRuntimeSkillSources(workspacePath)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	registry := skillmodel.NewRegistry()
+	warnings := make([]error, 0)
+	for _, source := range sources {
+		if err := registry.Load(source.Path); err != nil {
+			warnings = append(warnings, fmt.Errorf("%s (%s): %w", source.Kind, source.Path, err))
+		}
+	}
+	return registry, warnings, nil
+}
+
+func printSkillLoadWarnings(warnings []error) {
+	for _, warn := range warnings {
+		if warn == nil {
+			continue
+		}
+		fmt.Fprintf(os.Stderr, "WARN skill load: %v\n", warn)
+	}
+}
+
+func listRuntimeDomainSkills(registry *skillmodel.Registry) ([]*domain.Skill, error) {
+	if registry == nil {
+		return nil, nil
+	}
+
+	names, err := registry.List("name")
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(names)
+
+	out := make([]*domain.Skill, 0, len(names))
+	for _, name := range names {
+		item, err := registry.Get(name)
+		if err != nil || item == nil {
+			continue
+		}
+		out = append(out, registrySkillToDomain(item))
+	}
+	return out, nil
+}
+
+func registrySkillToDomain(skill *skillmodel.Skill) *domain.Skill {
+	if skill == nil {
+		return nil
+	}
+
+	tags := make([]domain.Tag, 0, len(skill.Tags))
+	for _, tag := range skill.Tags {
+		tags = append(tags, domain.Tag(tag))
+	}
+
+	tools := make([]domain.ToolRef, 0, len(skill.Tools))
+	for _, toolName := range skill.Tools {
+		tools = append(tools, domain.ToolRef(toolName))
+	}
+
+	return &domain.Skill{
+		ID:          domain.SkillID(skill.Name),
+		Name:        skill.Name,
+		Description: skill.Description,
+		Tags:        tags,
+		Tools:       tools,
+		Content:     skill.Content,
+	}
 }
