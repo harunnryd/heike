@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/harunnryd/heike/internal/config"
+	"github.com/harunnryd/heike/internal/pathutil"
 )
 
 const (
@@ -270,7 +271,7 @@ func SaveToken(token *CodexToken, tokenPath string) error {
 func ResolveTokenPath(tokenPath string) (string, error) {
 	path := strings.TrimSpace(tokenPath)
 	if path != "" {
-		return path, nil
+		return pathutil.Expand(path)
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {

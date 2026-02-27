@@ -61,7 +61,7 @@ func TestDaemonFullLifecycle(t *testing.T) {
 	policyComp := components.NewPolicyEngineComponent(&cfg.Governance, workspaceID, cfg.Daemon.WorkspacePath)
 	d.AddComponent(policyComp)
 
-	orchComp := components.NewOrchestratorComponent(cfg, storeComp, policyComp)
+	orchComp := components.NewOrchestratorComponent(cfg, storeComp, policyComp, nil)
 	d.AddComponent(orchComp)
 
 	ingressComp := components.NewIngressComponent(storeComp, &cfg.Ingress, &cfg.Governance)
@@ -158,7 +158,7 @@ func TestDaemonComponentInitOrder(t *testing.T) {
 	d.AddComponent(storeComp)
 	d.AddComponent(policyComp)
 
-	orchComp := components.NewOrchestratorComponent(cfg, storeComp, policyComp)
+	orchComp := components.NewOrchestratorComponent(cfg, storeComp, policyComp, nil)
 	d.AddComponent(orchComp)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -209,7 +209,7 @@ func TestDaemonHealthEndpoint(t *testing.T) {
 
 	storeComp := components.NewStoreWorkerComponent(workspaceID, cfg.Daemon.WorkspacePath, &cfg.Store)
 	policyComp := components.NewPolicyEngineComponent(&cfg.Governance, workspaceID, cfg.Daemon.WorkspacePath)
-	orchComp := components.NewOrchestratorComponent(cfg, storeComp, policyComp)
+	orchComp := components.NewOrchestratorComponent(cfg, storeComp, policyComp, nil)
 	ingressComp := components.NewIngressComponent(storeComp, &cfg.Ingress, &cfg.Governance)
 	workersComp := components.NewWorkersComponent(cfg, ingressComp, orchComp, storeComp)
 	schedulerComp := components.NewSchedulerComponent(cfg, ingressComp, workspaceID)
@@ -288,7 +288,7 @@ func TestDaemonGracefulShutdown(t *testing.T) {
 
 	storeComp := components.NewStoreWorkerComponent(workspaceID, cfg.Daemon.WorkspacePath, &cfg.Store)
 	policyComp := components.NewPolicyEngineComponent(&cfg.Governance, workspaceID, cfg.Daemon.WorkspacePath)
-	orchComp := components.NewOrchestratorComponent(cfg, storeComp, policyComp)
+	orchComp := components.NewOrchestratorComponent(cfg, storeComp, policyComp, nil)
 	ingressComp := components.NewIngressComponent(storeComp, &cfg.Ingress, &cfg.Governance)
 	workersComp := components.NewWorkersComponent(cfg, ingressComp, orchComp, storeComp)
 	schedulerComp := components.NewSchedulerComponent(cfg, ingressComp, workspaceID)

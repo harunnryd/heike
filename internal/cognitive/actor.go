@@ -12,30 +12,18 @@ type ToolExecutor interface {
 	Execute(ctx context.Context, name string, args json.RawMessage, input string) (json.RawMessage, error)
 }
 
-// OutputHandler handles sending messages to the user
-type OutputHandler interface {
-	Send(ctx context.Context, content string) error
-}
-
 type UnifiedActor struct {
-	toolExecutor  ToolExecutor
-	outputHandler OutputHandler
+	toolExecutor ToolExecutor
 }
 
-func NewActor(te ToolExecutor, oh OutputHandler) *UnifiedActor {
+func NewActor(te ToolExecutor) *UnifiedActor {
 	return &UnifiedActor{
-		toolExecutor:  te,
-		outputHandler: oh,
+		toolExecutor: te,
 	}
 }
 
 func (a *UnifiedActor) Execute(ctx context.Context, action *Action) (*ExecutionResult, error) {
 	if action.Type == ActionTypeAnswer {
-		if a.outputHandler != nil {
-			if err := a.outputHandler.Send(ctx, action.Content); err != nil {
-				return nil, fmt.Errorf("failed to send output: %w", err)
-			}
-		}
 		return &ExecutionResult{Success: true, Output: action.Content}, nil
 	}
 

@@ -4,13 +4,15 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/harunnryd/heike/internal/pathutil"
 )
 
 // ResolveWorkspaceRootPath resolves configured workspace root path.
 // If empty, it falls back to ~/.heike/workspaces.
 func ResolveWorkspaceRootPath(workspaceRootPath string) (string, error) {
 	if trimmed := strings.TrimSpace(workspaceRootPath); trimmed != "" {
-		return trimmed, nil
+		return pathutil.Expand(trimmed)
 	}
 
 	home, err := os.UserHomeDir()

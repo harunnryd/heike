@@ -76,20 +76,20 @@ func NewKernel(
 	planner := cognitive.NewPlanner(llmExecutor, cognitive.PlannerPromptConfig{
 		System: cfg.Prompts.Planner.System,
 		Output: cfg.Prompts.Planner.Output,
-	})
+	}, cfg.Orchestrator.StructuredRetryMax)
 	thinker := cognitive.NewThinker(llmExecutor, cognitive.ThinkerPromptConfig{
 		System:      cfg.Prompts.Thinker.System,
 		Instruction: cfg.Prompts.Thinker.Instruction,
 	})
 
 	// Adapter for Actor (ToolRunner + Egress)
-	actorAdapter := NewActorAdapter(runner, egress)
-	actor := cognitive.NewActor(actorAdapter, actorAdapter) // Implements both ToolExecutor & OutputHandler
+	actorAdapter := NewActorAdapter(runner)
+	actor := cognitive.NewActor(actorAdapter)
 
 	reflector := cognitive.NewReflector(llmExecutor, cognitive.ReflectorPromptConfig{
 		System:     cfg.Prompts.Reflector.System,
 		Guidelines: cfg.Prompts.Reflector.Guidelines,
-	})
+	}, cfg.Orchestrator.StructuredRetryMax)
 
 	engine := cognitive.NewEngine(
 		planner,
@@ -127,6 +127,9 @@ func NewKernel(
 		skills,
 		cfg.Orchestrator.SubTaskRetryMax,
 		subTaskRetryBackoff,
+		cfg.Orchestrator.MaxSubTasks,
+		cfg.Orchestrator.MaxParallelSubTasks,
+		egress,
 	)
 
 	return &DefaultKernel{
@@ -207,23 +210,14 @@ func (k *DefaultKernel) Execute(ctx context.Context, evt *ingress.Event) error {
 // ActorAdapter adapts ToolRunner and Egress to Cognitive Actor interfaces
 type ActorAdapter struct {
 	runner *tool.Runner
-	egress egress.Egress
 }
 
-func NewActorAdapter(r *tool.Runner, e egress.Egress) *ActorAdapter {
-	return &ActorAdapter{runner: r, egress: e}
+func NewActorAdapter(r *tool.Runner) *ActorAdapter {
+	return &ActorAdapter{runner: r}
 }
 
 func (a *ActorAdapter) Execute(ctx context.Context, name string, args json.RawMessage, input string) (json.RawMessage, error) {
 	return a.runner.Execute(ctx, name, args, input)
-}
-
-func (a *ActorAdapter) Send(ctx context.Context, content string) error {
-	sessionID := logger.GetSessionID(ctx)
-	if sessionID == "" {
-		sessionID = config.DefaultWorkspaceID
-	}
-	return a.egress.Send(ctx, sessionID, content)
 }
 
 // LLMExecutorAdapter adapts Orchestrator LLMExecutor to Cognitive LLMClient

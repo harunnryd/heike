@@ -22,24 +22,12 @@ func TestParsePlannerResponse_JSONObject(t *testing.T) {
 	}
 }
 
-func TestParsePlannerResponse_ExtractedJSON(t *testing.T) {
-	raw := "Plan:\n```json\n[{\"id\":\"x\",\"description\":\"inside fence\"}]\n```"
-	steps, mode := parsePlannerResponse(raw, "goal")
-	if mode != plannerParseModeJSONArray && mode != plannerParseModeExtracted {
-		t.Fatalf("unexpected mode: %s", mode)
+func TestParsePlannerResponse_InvalidReturnsNil(t *testing.T) {
+	steps, mode := parsePlannerResponse("SKILL_CODEBASE_STATS_DONE", "goal")
+	if mode != plannerParseModeInvalid {
+		t.Fatalf("mode = %s, want %s", mode, plannerParseModeInvalid)
 	}
-	if len(steps) != 1 || steps[0].Description != "inside fence" {
-		t.Fatalf("unexpected steps: %+v", steps)
-	}
-}
-
-func TestParsePlannerResponse_ControlTokenUsesGoalDefault(t *testing.T) {
-	goal := "Audit repository and summarize findings."
-	steps, mode := parsePlannerResponse("SKILL_CODEBASE_STATS_DONE", goal)
-	if mode != plannerParseModeGoalDefault {
-		t.Fatalf("mode = %s, want %s", mode, plannerParseModeGoalDefault)
-	}
-	if len(steps) != 1 || steps[0].Description != goal {
+	if len(steps) != 0 {
 		t.Fatalf("unexpected steps: %+v", steps)
 	}
 }
@@ -58,33 +46,32 @@ func TestParseReflectionResponse_JSON(t *testing.T) {
 	}
 }
 
-func TestParseReflectionResponse_ExtractedJSON(t *testing.T) {
-	raw := "Result:\n```json\n{\"analysis\":\"need plan update\",\"next_action\":\"replan\"}\n```"
-	reflection, mode := parseReflectionResponse(raw)
-	if mode != reflectionParseModeJSON && mode != reflectionParseModeExtracted {
-		t.Fatalf("unexpected mode: %s", mode)
-	}
-	if reflection.NextAction != SignalReplan {
-		t.Fatalf("next action = %s, want %s", reflection.NextAction, SignalReplan)
-	}
-}
-
-func TestParseReflectionResponse_HeuristicFallback(t *testing.T) {
+func TestParseReflectionResponse_InvalidReturnsNil(t *testing.T) {
 	reflection, mode := parseReflectionResponse("Temporary network issue, please retry.")
-	if mode != reflectionParseModeHeuristic {
-		t.Fatalf("mode = %s, want %s", mode, reflectionParseModeHeuristic)
+	if mode != reflectionParseModeInvalid {
+		t.Fatalf("mode = %s, want %s", mode, reflectionParseModeInvalid)
 	}
-	if reflection.NextAction != SignalRetry {
-		t.Fatalf("next action = %s, want %s", reflection.NextAction, SignalRetry)
+	if reflection != nil {
+		t.Fatalf("expected nil reflection, got %+v", reflection)
 	}
 }
 
-func TestParseReflectionResponse_ControlTokenDefaultsContinue(t *testing.T) {
-	reflection, mode := parseReflectionResponse("SKILL_CODEBASE_STATS_DONE")
-	if mode != reflectionParseModeHeuristic {
-		t.Fatalf("mode = %s, want %s", mode, reflectionParseModeHeuristic)
+func TestParseReflectionResponse_InvalidControlSignalReturnsNil(t *testing.T) {
+	reflection, mode := parseReflectionResponse(`{"analysis":"x","next_action":"unknown","new_memories":[]}`)
+	if mode != reflectionParseModeInvalid {
+		t.Fatalf("mode = %s, want %s", mode, reflectionParseModeInvalid)
 	}
-	if reflection.NextAction != SignalContinue {
-		t.Fatalf("next action = %s, want %s", reflection.NextAction, SignalContinue)
+	if reflection != nil {
+		t.Fatalf("expected nil reflection, got %+v", reflection)
+	}
+}
+
+func TestParseReflectionResponse_ControlTokenReturnsInvalid(t *testing.T) {
+	reflection, mode := parseReflectionResponse("SKILL_CODEBASE_STATS_DONE")
+	if mode != reflectionParseModeInvalid {
+		t.Fatalf("mode = %s, want %s", mode, reflectionParseModeInvalid)
+	}
+	if reflection != nil {
+		t.Fatalf("expected nil reflection, got %+v", reflection)
 	}
 }

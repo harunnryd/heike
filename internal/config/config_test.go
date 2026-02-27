@@ -9,6 +9,12 @@ import (
 )
 
 func TestLoadDefaults(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("GEMINI_API_KEY", "")
+	t.Setenv("ZAI_API_KEY", "")
+
 	// We pass nil for cmd to skip flags
 	cfg, err := Load(nil)
 	if err != nil {
@@ -112,6 +118,12 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.Orchestrator.SubTaskRetryMax != DefaultOrchestratorSubTaskRetryMax {
 		t.Errorf("Expected default subtask retry max %d, got %d", DefaultOrchestratorSubTaskRetryMax, cfg.Orchestrator.SubTaskRetryMax)
 	}
+	if cfg.Orchestrator.MaxParallelSubTasks != DefaultOrchestratorMaxParallelSubTasks {
+		t.Errorf("Expected default max parallel subtasks %d, got %d", DefaultOrchestratorMaxParallelSubTasks, cfg.Orchestrator.MaxParallelSubTasks)
+	}
+	if cfg.Orchestrator.StructuredRetryMax != DefaultOrchestratorStructuredRetryMax {
+		t.Errorf("Expected default structured retry max %d, got %d", DefaultOrchestratorStructuredRetryMax, cfg.Orchestrator.StructuredRetryMax)
+	}
 	if cfg.Orchestrator.SubTaskRetryBackoff != DefaultOrchestratorSubTaskRetryBackoff {
 		t.Errorf("Expected default subtask retry backoff %s, got %s", DefaultOrchestratorSubTaskRetryBackoff, cfg.Orchestrator.SubTaskRetryBackoff)
 	}
@@ -173,5 +185,54 @@ func TestLoadWithMissingConfigFlagReturnsError(t *testing.T) {
 
 	if _, err := Load(cmd); err == nil {
 		t.Fatal("expected error when --config points to missing file")
+	}
+}
+
+func TestLoad_ExpandsConfiguredPaths(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	configPath := filepath.Join(tmpDir, "config.yaml")
+	content := []byte(`
+daemon:
+  workspace_path: ~/.heike/workspaces
+auth:
+  codex:
+    token_path: ~/.heike/auth/codex.json
+models:
+  registry:
+    - name: gpt-5.2-codex
+      provider: openai-codex
+      auth_file: ~/.heike/auth/codex.json
+`)
+	if err := os.WriteFile(configPath, content, 0644); err != nil {
+		t.Fatalf("write config file: %v", err)
+	}
+
+	cmd := &cobra.Command{}
+	cmd.Flags().String("config", "", "config file path")
+	if err := cmd.Flags().Set("config", configPath); err != nil {
+		t.Fatalf("set config flag: %v", err)
+	}
+
+	cfg, err := Load(cmd)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	wantWorkspacePath := filepath.Join(tmpDir, ".heike", "workspaces")
+	if cfg.Daemon.WorkspacePath != wantWorkspacePath {
+		t.Fatalf("workspace path = %q, want %q", cfg.Daemon.WorkspacePath, wantWorkspacePath)
+	}
+
+	wantTokenPath := filepath.Join(tmpDir, ".heike", "auth", "codex.json")
+	if cfg.Auth.Codex.TokenPath != wantTokenPath {
+		t.Fatalf("token path = %q, want %q", cfg.Auth.Codex.TokenPath, wantTokenPath)
+	}
+	if len(cfg.Models.Registry) != 1 {
+		t.Fatalf("expected 1 model registry, got %d", len(cfg.Models.Registry))
+	}
+	if cfg.Models.Registry[0].AuthFile != wantTokenPath {
+		t.Fatalf("model auth file = %q, want %q", cfg.Models.Registry[0].AuthFile, wantTokenPath)
 	}
 }

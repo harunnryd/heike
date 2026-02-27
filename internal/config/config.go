@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/harunnryd/heike/internal/pathutil"
+
 	"github.com/knadh/koanf/parsers/yaml"
 	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
@@ -206,11 +208,13 @@ type GovernanceConfig struct {
 type OrchestratorConfig struct {
 	Verbose                bool   `koanf:"verbose"`
 	MaxSubTasks            int    `koanf:"max_sub_tasks"`
+	MaxParallelSubTasks    int    `koanf:"max_parallel_subtasks"`
 	MaxToolsPerTurn        int    `koanf:"max_tools_per_turn"`
 	MaxTurns               int    `koanf:"max_turns"`
 	TokenBudget            int    `koanf:"token_budget"`
 	DecomposeWordThreshold int    `koanf:"decompose_word_threshold"`
 	SessionHistoryLimit    int    `koanf:"session_history_limit"`
+	StructuredRetryMax     int    `koanf:"structured_retry_max"`
 	SubTaskRetryMax        int    `koanf:"subtask_retry_max"`
 	SubTaskRetryBackoff    string `koanf:"subtask_retry_backoff"`
 }
@@ -253,11 +257,13 @@ const (
 	DefaultStoreTranscriptRotateMaxBytes   = 10 * 1024 * 1024
 	DefaultOrchestratorVerbose             = false
 	DefaultOrchestratorMaxSubTasks         = 10
+	DefaultOrchestratorMaxParallelSubTasks = 4
 	DefaultOrchestratorMaxToolsPerTurn     = 12
 	DefaultOrchestratorMaxTurns            = 10
 	DefaultOrchestratorTokenBudget         = 8000
 	DefaultOrchestratorDecomposeWordThresh = 20
 	DefaultOrchestratorSessionHistoryLimit = 20
+	DefaultOrchestratorStructuredRetryMax  = 1
 	DefaultOrchestratorSubTaskRetryMax     = 3
 	DefaultOrchestratorSubTaskRetryBackoff = "1s"
 	DefaultSlackPort                       = 3000
@@ -352,11 +358,13 @@ func Load(cmd *cobra.Command) (*Config, error) {
 		"tools.apply_patch.command":             DefaultApplyPatchToolCommand,
 		"orchestrator.verbose":                  DefaultOrchestratorVerbose,
 		"orchestrator.max_sub_tasks":            DefaultOrchestratorMaxSubTasks,
+		"orchestrator.max_parallel_subtasks":    DefaultOrchestratorMaxParallelSubTasks,
 		"orchestrator.max_tools_per_turn":       DefaultOrchestratorMaxToolsPerTurn,
 		"orchestrator.max_turns":                DefaultOrchestratorMaxTurns,
 		"orchestrator.token_budget":             DefaultOrchestratorTokenBudget,
 		"orchestrator.decompose_word_threshold": DefaultOrchestratorDecomposeWordThresh,
 		"orchestrator.session_history_limit":    DefaultOrchestratorSessionHistoryLimit,
+		"orchestrator.structured_retry_max":     DefaultOrchestratorStructuredRetryMax,
 		"orchestrator.subtask_retry_max":        DefaultOrchestratorSubTaskRetryMax,
 		"orchestrator.subtask_retry_backoff":    DefaultOrchestratorSubTaskRetryBackoff,
 		"adapters.slack.port":                   DefaultSlackPort,
@@ -427,6 +435,10 @@ func Load(cmd *cobra.Command) (*Config, error) {
 		}
 	}
 
+	if err := normalizePathFields(&cfg); err != nil {
+		return nil, err
+	}
+
 	// Post-Process: Inject standard Env Vars if missing
 	if key := os.Getenv("OPENAI_API_KEY"); key != "" {
 		for i, m := range cfg.Models.Registry {
@@ -458,4 +470,50 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	}
 
 	return &cfg, nil
+}
+
+func normalizePathFields(cfg *Config) error {
+	if cfg == nil {
+		return nil
+	}
+
+	workspacePath, err := expandConfiguredPath(cfg.Daemon.WorkspacePath)
+	if err != nil {
+		return err
+	}
+	if workspacePath != "" {
+		cfg.Daemon.WorkspacePath = workspacePath
+	}
+
+	tokenPath, err := expandConfiguredPath(cfg.Auth.Codex.TokenPath)
+	if err != nil {
+		return err
+	}
+	if tokenPath != "" {
+		cfg.Auth.Codex.TokenPath = tokenPath
+	}
+
+	for i := range cfg.Models.Registry {
+		authFile, err := expandConfiguredPath(cfg.Models.Registry[i].AuthFile)
+		if err != nil {
+			return err
+		}
+		if authFile != "" {
+			cfg.Models.Registry[i].AuthFile = authFile
+		}
+	}
+
+	return nil
+}
+
+func expandConfiguredPath(path string) (string, error) {
+	trimmed := strings.TrimSpace(path)
+	if trimmed == "" {
+		return "", nil
+	}
+	expanded, err := pathutil.Expand(trimmed)
+	if err != nil {
+		return "", err
+	}
+	return expanded, nil
 }

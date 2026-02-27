@@ -1,6 +1,10 @@
 package auth
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestCallbackPathFromRedirectURI(t *testing.T) {
 	tests := []struct {
@@ -48,5 +52,22 @@ func TestCallbackPathFromRedirectURI(t *testing.T) {
 				t.Fatalf("path mismatch: got %q want %q", got, tt.wantPath)
 			}
 		})
+	}
+}
+
+func TestResolveTokenPath_ExpandsHomeShortcut(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatalf("user home dir: %v", err)
+	}
+
+	got, err := ResolveTokenPath("~/.heike/auth/codex.json")
+	if err != nil {
+		t.Fatalf("resolve token path: %v", err)
+	}
+
+	want := filepath.Join(home, ".heike", "auth", "codex.json")
+	if got != want {
+		t.Fatalf("path mismatch: got %q want %q", got, want)
 	}
 }

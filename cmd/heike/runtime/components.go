@@ -40,6 +40,7 @@ type RuntimeComponents struct {
 	ToolRunner    *tool.Runner
 	ToolRegistry  *tool.Registry
 	SkillRegistry *skill.Registry
+	AdapterMgr    *adapter.RuntimeManager
 
 	Locks *concurrency.SimpleSessionLockManager
 }
@@ -58,6 +59,35 @@ func NewRuntimeComponents(ctx context.Context, cfg *config.Config, workspaceID s
 		Config:      cfg,
 		WorkspaceID: workspaceID,
 	}
+
+	eventHandler := func(evtCtx context.Context, source string, eventType string, sessionID string, content string, metadata map[string]string) error {
+		if components.Ingress == nil {
+			return fmt.Errorf("ingress not initialized")
+		}
+
+		msgType := ingress.TypeUserMessage
+		switch eventType {
+		case string(ingress.TypeCommand):
+			msgType = ingress.TypeCommand
+		case string(ingress.TypeCron):
+			msgType = ingress.TypeCron
+		case string(ingress.TypeSystemEvent):
+			msgType = ingress.TypeSystemEvent
+		}
+
+		evt := ingress.NewEvent(source, msgType, sessionID, content, metadata)
+		return components.Ingress.Submit(evtCtx, &evt)
+	}
+
+	adapterMgr, err := adapter.NewRuntimeManager(cfg.Adapters, eventHandler, adapter.RuntimeAdapterOptions{
+		IncludeCLI:        true,
+		IncludeSystemNull: true,
+	})
+	if err != nil {
+		components.cleanup()
+		return nil, fmt.Errorf("init adapters: %w", err)
+	}
+	components.AdapterMgr = adapterMgr
 
 	storeInitializer := initializers.NewStoreInitializer()
 	storeComponent, err := storeInitializer.Initialize(ctx, cfg, workspaceID)
@@ -98,18 +128,11 @@ func NewRuntimeComponents(ctx context.Context, cfg *config.Config, workspaceID s
 	}
 
 	egressComponent := egress.NewEgress(components.StoreWorker)
-	cliAdapter := adapter.NewCLIAdapter()
-	if err := egressComponent.Register(cliAdapter); err != nil {
-		components.cleanup()
-		return nil, fmt.Errorf("register cli adapter: %w", err)
-	}
-	if err := egressComponent.Register(adapter.NewNullAdapter("scheduler")); err != nil {
-		components.cleanup()
-		return nil, fmt.Errorf("register scheduler adapter: %w", err)
-	}
-	if err := egressComponent.Register(adapter.NewNullAdapter("system")); err != nil {
-		components.cleanup()
-		return nil, fmt.Errorf("register system adapter: %w", err)
+	for _, outputAdapter := range components.AdapterMgr.OutputAdapters() {
+		if err := egressComponent.Register(outputAdapter); err != nil {
+			components.cleanup()
+			return nil, fmt.Errorf("register output adapter %s: %w", outputAdapter.Name(), err)
+		}
 	}
 	components.Egress = egressComponent
 
@@ -180,6 +203,10 @@ func (r *RuntimeComponents) Start() error {
 			return fmt.Errorf("start background worker: %w", err)
 		}
 	}
+
+	if r.AdapterMgr != nil {
+		r.AdapterMgr.Start(r.Ctx)
+	}
 	return nil
 }
 
@@ -202,6 +229,12 @@ func (r *RuntimeComponents) Stop() {
 
 	if r.Orchestrator != nil {
 		r.Orchestrator.Stop(r.Ctx)
+	}
+
+	if r.AdapterMgr != nil {
+		if err := r.AdapterMgr.Stop(r.Ctx); err != nil {
+			slog.Warn("Failed to stop adapter manager", "error", err)
+		}
 	}
 
 	if r.Ingress != nil {

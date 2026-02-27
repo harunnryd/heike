@@ -22,6 +22,10 @@ type Manager interface {
 	HandleRequest(ctx context.Context, sessionID string, goal string) error
 }
 
+type ResponseSink interface {
+	Send(ctx context.Context, sessionID string, content string) error
+}
+
 type SkillProvider interface {
 	Get(name string) (*skill.Skill, error)
 	GetRelevant(query string, limit int) ([]*skill.Skill, error)
@@ -35,6 +39,8 @@ type DefaultTaskManager struct {
 	tools       []tool.ToolDescriptor
 	toolBroker  ToolBroker
 	skills      SkillProvider
+	response    ResponseSink
+	maxSubTasks int
 }
 
 func NewManager(
@@ -46,16 +52,24 @@ func NewManager(
 	skills SkillProvider,
 	subTaskRetryMax int,
 	subTaskRetryBackoff time.Duration,
+	maxSubTasks int,
+	maxParallelSubTasks int,
+	responseSink ResponseSink,
 ) *DefaultTaskManager {
 	clonedTools := append([]tool.ToolDescriptor(nil), tools...)
+	if maxSubTasks <= 0 {
+		maxSubTasks = config.DefaultOrchestratorMaxSubTasks
+	}
 	return &DefaultTaskManager{
 		engine:      e,
 		decomposer:  d,
-		coordinator: NewCoordinator(e, subTaskRetryMax, subTaskRetryBackoff),
+		coordinator: NewCoordinator(e, subTaskRetryMax, subTaskRetryBackoff, maxParallelSubTasks),
 		session:     s,
 		tools:       clonedTools,
 		toolBroker:  toolBroker,
 		skills:      skills,
+		response:    responseSink,
+		maxSubTasks: maxSubTasks,
 	}
 }
 
@@ -85,10 +99,10 @@ func (tm *DefaultTaskManager) executeSimpleTask(ctx context.Context, cCtx *cogni
 	})
 
 	if err != nil {
-		return tm.session.AppendInteraction(ctx, cCtx.SessionID, "system", fmt.Sprintf("Error: %v", err))
+		return tm.persistAndSend(ctx, cCtx.SessionID, "system", fmt.Sprintf("Error: %v", err))
 	}
 
-	return tm.session.AppendInteraction(ctx, cCtx.SessionID, "assistant", result.Content)
+	return tm.persistAndSend(ctx, cCtx.SessionID, "assistant", result.Content)
 }
 
 func (tm *DefaultTaskManager) executeComplexTask(ctx context.Context, cCtx *cognitive.CognitiveContext, goal string) error {
@@ -98,6 +112,12 @@ func (tm *DefaultTaskManager) executeComplexTask(ctx context.Context, cCtx *cogn
 	subTasks, err := tm.decomposer.Decompose(ctx, goal)
 	if err != nil {
 		return err
+	}
+	if len(subTasks) > tm.maxSubTasks {
+		slog.Warn("Sub-task limit reached, truncating decomposition",
+			"limit", tm.maxSubTasks,
+			"original", len(subTasks))
+		subTasks = subTasks[:tm.maxSubTasks]
 	}
 
 	tm.session.AppendInteraction(ctx, cCtx.SessionID, "system", fmt.Sprintf("Task decomposed into %d sub-tasks.", len(subTasks)))
@@ -121,7 +141,25 @@ func (tm *DefaultTaskManager) executeComplexTask(ctx context.Context, cCtx *cogn
 		}
 	}
 
-	return tm.session.AppendInteraction(ctx, cCtx.SessionID, "assistant", sb.String())
+	return tm.persistAndSend(ctx, cCtx.SessionID, "assistant", sb.String())
+}
+
+func (tm *DefaultTaskManager) persistAndSend(ctx context.Context, sessionID, role, content string) error {
+	if err := tm.session.AppendInteraction(ctx, sessionID, role, content); err != nil {
+		return err
+	}
+
+	if role != "assistant" && role != "system" {
+		return nil
+	}
+	if tm.response == nil {
+		return nil
+	}
+
+	if err := tm.response.Send(ctx, sessionID, content); err != nil {
+		return fmt.Errorf("send response: %w", err)
+	}
+	return nil
 }
 
 func (tm *DefaultTaskManager) applyToolDefinitions(cCtx *cognitive.CognitiveContext, goal string) {

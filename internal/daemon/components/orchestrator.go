@@ -19,13 +19,15 @@ type OrchestratorComponent struct {
 	cfg              *config.Config
 	storeWorkerComp  *StoreWorkerComponent
 	policyEngineComp *PolicyEngineComponent
+	adapterMgr       *adapter.RuntimeManager
 }
 
-func NewOrchestratorComponent(cfg *config.Config, storeComp *StoreWorkerComponent, policyComp *PolicyEngineComponent) *OrchestratorComponent {
+func NewOrchestratorComponent(cfg *config.Config, storeComp *StoreWorkerComponent, policyComp *PolicyEngineComponent, adapterMgr *adapter.RuntimeManager) *OrchestratorComponent {
 	return &OrchestratorComponent{
 		cfg:              cfg,
 		storeWorkerComp:  storeComp,
 		policyEngineComp: policyComp,
+		adapterMgr:       adapterMgr,
 	}
 }
 
@@ -66,14 +68,22 @@ func (o *OrchestratorComponent) Init(ctx context.Context) error {
 		slog.Info("Skill registry initialized", "workspace", o.storeWorkerComp.workspaceID, "count", len(names))
 	}
 	egressMgr := egress.NewEgress(storeWorker)
-	if err := egressMgr.Register(adapter.NewCLIAdapter()); err != nil {
-		return fmt.Errorf("failed to register default egress adapter: %w", err)
-	}
-	if err := egressMgr.Register(adapter.NewNullAdapter("scheduler")); err != nil {
-		return fmt.Errorf("failed to register scheduler egress adapter: %w", err)
-	}
-	if err := egressMgr.Register(adapter.NewNullAdapter("system")); err != nil {
-		return fmt.Errorf("failed to register system egress adapter: %w", err)
+	if o.adapterMgr != nil {
+		for _, outputAdapter := range o.adapterMgr.OutputAdapters() {
+			if err := egressMgr.Register(outputAdapter); err != nil {
+				return fmt.Errorf("failed to register egress adapter %s: %w", outputAdapter.Name(), err)
+			}
+		}
+	} else {
+		if err := egressMgr.Register(adapter.NewCLIAdapter()); err != nil {
+			return fmt.Errorf("failed to register default egress adapter: %w", err)
+		}
+		if err := egressMgr.Register(adapter.NewNullAdapter("scheduler")); err != nil {
+			return fmt.Errorf("failed to register scheduler egress adapter: %w", err)
+		}
+		if err := egressMgr.Register(adapter.NewNullAdapter("system")); err != nil {
+			return fmt.Errorf("failed to register system egress adapter: %w", err)
+		}
 	}
 
 	kernel, err := orchestrator.NewKernel(*o.cfg, storeWorker, toolingComponents.Runner, policyEngine, skillRegistry, egressMgr)

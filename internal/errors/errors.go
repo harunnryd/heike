@@ -27,6 +27,9 @@ var (
 	// ErrTransient - transient error (show retry hint in interactive, retry with backoff in background)
 	ErrTransient = errors.New("transient error")
 
+	// ErrInvalidModelOutput - model returned malformed structured output
+	ErrInvalidModelOutput = errors.New("invalid model output")
+
 	// ErrInternal - internal error (generic message + trace id in interactive, retry once then fail in background)
 	ErrInternal = errors.New("internal error")
 )

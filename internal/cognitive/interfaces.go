@@ -30,7 +30,8 @@ type Thinker interface {
 // Actor executes the decided actions
 type Actor interface {
 	// Execute performs the action decided by the Thinker.
-	// This abstracts over ToolRunner (for tools) and Egress (for answers).
+	// This abstracts tool execution only; final answer delivery is handled
+	// by orchestrator/task response sinks.
 	Execute(ctx context.Context, action *Action) (*ExecutionResult, error)
 }
 

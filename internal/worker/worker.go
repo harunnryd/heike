@@ -2,7 +2,6 @@ package worker
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -131,10 +130,6 @@ func (w *Worker) processEvent(ctx context.Context, evt *ingress.Event) error {
 	}
 	defer w.locks.Unlock(evt.SessionID)
 
-	if err := w.persistUserEvent(ctx, evt); err != nil {
-		return fmt.Errorf("persist event: %w", err)
-	}
-
 	if err := w.executeOrchestrator(ctx, evt); err != nil {
 		return fmt.Errorf("execute orchestrator: %w", err)
 	}
@@ -169,28 +164,6 @@ func (w *Worker) acquireSessionLock(ctx context.Context, sessionID string) error
 	}
 
 	w.locks.Lock(sessionID)
-	return nil
-}
-
-func (w *Worker) persistUserEvent(ctx context.Context, evt *ingress.Event) error {
-	if evt.Type != ingress.TypeUserMessage {
-		return nil
-	}
-
-	line, err := json.Marshal(map[string]interface{}{
-		"id":      evt.ID,
-		"type":    "user_event",
-		"content": evt.Content,
-		"ts":      time.Now(),
-	})
-	if err != nil {
-		return fmt.Errorf("marshal event: %w", errors.Internal("failed to marshal event"))
-	}
-
-	if err := w.store.WriteTranscript(evt.SessionID, line); err != nil {
-		return fmt.Errorf("write transcript: %w", errors.Transient("storage write failed"))
-	}
-
 	return nil
 }
 

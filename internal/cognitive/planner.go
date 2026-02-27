@@ -7,11 +7,13 @@ import (
 	"strings"
 
 	"github.com/harunnryd/heike/internal/config"
+	heikeErrors "github.com/harunnryd/heike/internal/errors"
 )
 
 type UnifiedPlanner struct {
-	llm       LLMClient
-	promptCfg PlannerPromptConfig
+	llm                LLMClient
+	promptCfg          PlannerPromptConfig
+	structuredRetryMax int
 }
 
 type PlannerPromptConfig struct {
@@ -19,17 +21,21 @@ type PlannerPromptConfig struct {
 	Output string
 }
 
-func NewPlanner(llm LLMClient, promptCfg PlannerPromptConfig) *UnifiedPlanner {
+func NewPlanner(llm LLMClient, promptCfg PlannerPromptConfig, structuredRetryMax int) *UnifiedPlanner {
 	if strings.TrimSpace(promptCfg.System) == "" {
 		promptCfg.System = config.DefaultPlannerSystemPrompt
 	}
 	if strings.TrimSpace(promptCfg.Output) == "" {
 		promptCfg.Output = config.DefaultPlannerOutputPrompt
 	}
+	if structuredRetryMax < 0 {
+		structuredRetryMax = 0
+	}
 
 	return &UnifiedPlanner{
-		llm:       llm,
-		promptCfg: promptCfg,
+		llm:                llm,
+		promptCfg:          promptCfg,
+		structuredRetryMax: structuredRetryMax,
 	}
 }
 
@@ -38,21 +44,28 @@ func (p *UnifiedPlanner) Plan(ctx context.Context, goal string, c *CognitiveCont
 
 	prompt := p.buildPrompt(goal, c)
 
-	response, err := p.llm.Complete(ctx, prompt)
-	if err != nil {
-		return nil, fmt.Errorf("planning failed: %w", err)
+	for attempt := 0; attempt <= p.structuredRetryMax; attempt++ {
+		response, err := p.llm.Complete(ctx, prompt)
+		if err != nil {
+			return nil, fmt.Errorf("planning failed: %w", err)
+		}
+
+		normalized := cleanModelJSON(response)
+		steps, mode := parsePlannerResponse(normalized, goal)
+		if len(steps) > 0 {
+			return &Plan{
+				Raw:   normalized,
+				Steps: steps,
+			}, nil
+		}
+
+		slog.Warn("Planner returned invalid structured output",
+			"attempt", attempt+1,
+			"max_attempts", p.structuredRetryMax+1,
+			"mode", mode)
 	}
 
-	normalized := cleanModelJSON(response)
-	steps, mode := parsePlannerResponse(normalized, goal)
-	if mode != plannerParseModeJSONArray {
-		slog.Debug("Planner fallback parser used", "mode", mode, "steps", len(steps))
-	}
-
-	return &Plan{
-		Raw:   normalized,
-		Steps: steps,
-	}, nil
+	return nil, heikeErrors.InvalidModelOutput("planner returned invalid JSON output")
 }
 
 func (p *UnifiedPlanner) buildPrompt(goal string, c *CognitiveContext) string {

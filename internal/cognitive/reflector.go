@@ -7,11 +7,13 @@ import (
 	"strings"
 
 	"github.com/harunnryd/heike/internal/config"
+	heikeErrors "github.com/harunnryd/heike/internal/errors"
 )
 
 type UnifiedReflector struct {
-	llm       LLMClient
-	promptCfg ReflectorPromptConfig
+	llm                LLMClient
+	promptCfg          ReflectorPromptConfig
+	structuredRetryMax int
 }
 
 type ReflectorPromptConfig struct {
@@ -19,17 +21,21 @@ type ReflectorPromptConfig struct {
 	Guidelines string
 }
 
-func NewReflector(llm LLMClient, promptCfg ReflectorPromptConfig) *UnifiedReflector {
+func NewReflector(llm LLMClient, promptCfg ReflectorPromptConfig, structuredRetryMax int) *UnifiedReflector {
 	if strings.TrimSpace(promptCfg.System) == "" {
 		promptCfg.System = config.DefaultReflectorSystemPrompt
 	}
 	if strings.TrimSpace(promptCfg.Guidelines) == "" {
 		promptCfg.Guidelines = config.DefaultReflectorGuidelinesPrompt
 	}
+	if structuredRetryMax < 0 {
+		structuredRetryMax = 0
+	}
 
 	return &UnifiedReflector{
-		llm:       llm,
-		promptCfg: promptCfg,
+		llm:                llm,
+		promptCfg:          promptCfg,
+		structuredRetryMax: structuredRetryMax,
 	}
 }
 
@@ -38,22 +44,24 @@ func (r *UnifiedReflector) Reflect(ctx context.Context, goal string, action *Act
 
 	prompt := r.buildPrompt(goal, action, result)
 
-	response, err := r.llm.Complete(ctx, prompt)
-	if err != nil {
-		return nil, fmt.Errorf("reflection failed: %w", err)
+	for attempt := 0; attempt <= r.structuredRetryMax; attempt++ {
+		response, err := r.llm.Complete(ctx, prompt)
+		if err != nil {
+			return nil, fmt.Errorf("reflection failed: %w", err)
+		}
+
+		reflection, mode := parseReflectionResponse(response)
+		if reflection != nil {
+			return reflection, nil
+		}
+
+		slog.Warn("Reflector returned invalid structured output",
+			"attempt", attempt+1,
+			"max_attempts", r.structuredRetryMax+1,
+			"mode", mode)
 	}
 
-	reflection, mode := parseReflectionResponse(response)
-	if reflection == nil {
-		return &Reflection{
-			Content:    "No reflection content returned.",
-			NextAction: SignalContinue,
-		}, nil
-	}
-	if mode != reflectionParseModeJSON {
-		slog.Debug("Reflector fallback parser used", "mode", mode)
-	}
-	return reflection, nil
+	return nil, heikeErrors.InvalidModelOutput("reflector returned invalid JSON output")
 }
 
 func (r *UnifiedReflector) buildPrompt(goal string, action *Action, result *ExecutionResult) string {

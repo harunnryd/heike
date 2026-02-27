@@ -41,10 +41,10 @@ func TestCognitiveEngine_Run_Simple(t *testing.T) {
 	mockLLM := new(MockLLMClient)
 	mockToolExec := new(MockToolExecutor)
 
-	planner := NewPlanner(mockLLM, PlannerPromptConfig{})
+	planner := NewPlanner(mockLLM, PlannerPromptConfig{}, 1)
 	thinker := NewThinker(mockLLM, ThinkerPromptConfig{})
-	actor := NewActor(mockToolExec, nil)
-	reflector := NewReflector(mockLLM, ReflectorPromptConfig{})
+	actor := NewActor(mockToolExec)
+	reflector := NewReflector(mockLLM, ReflectorPromptConfig{}, 1)
 
 	engine := NewEngine(planner, thinker, actor, reflector, nil, config.DefaultOrchestratorMaxTurns, config.DefaultOrchestratorTokenBudget)
 
@@ -52,7 +52,7 @@ func TestCognitiveEngine_Run_Simple(t *testing.T) {
 	goal := "Say hello"
 
 	// Mock Planning
-	mockLLM.On("Complete", ctx, mock.Anything).Return("1. Say hello", nil).Once()
+	mockLLM.On("Complete", ctx, mock.Anything).Return(`[{"id":"1","description":"Say hello"}]`, nil).Once()
 
 	// Mock Thinking (Final Answer)
 	mockLLM.On("ChatComplete", ctx, mock.Anything, mock.Anything).Return("Hello!", []*contract.ToolCall{}, nil).Once()
@@ -69,10 +69,10 @@ func TestCognitiveEngine_Run_WithTool(t *testing.T) {
 	mockLLM := new(MockLLMClient)
 	mockToolExec := new(MockToolExecutor)
 
-	planner := NewPlanner(mockLLM, PlannerPromptConfig{})
+	planner := NewPlanner(mockLLM, PlannerPromptConfig{}, 1)
 	thinker := NewThinker(mockLLM, ThinkerPromptConfig{})
-	actor := NewActor(mockToolExec, nil)
-	reflector := NewReflector(mockLLM, ReflectorPromptConfig{})
+	actor := NewActor(mockToolExec)
+	reflector := NewReflector(mockLLM, ReflectorPromptConfig{}, 1)
 
 	engine := NewEngine(planner, thinker, actor, reflector, nil, config.DefaultOrchestratorMaxTurns, config.DefaultOrchestratorTokenBudget)
 
@@ -80,7 +80,7 @@ func TestCognitiveEngine_Run_WithTool(t *testing.T) {
 	goal := "Get weather"
 
 	// Planning
-	mockLLM.On("Complete", ctx, mock.Anything).Return("1. Check weather tool", nil).Once()
+	mockLLM.On("Complete", ctx, mock.Anything).Return(`[{"id":"1","description":"Check weather tool"}]`, nil).Once()
 
 	// Thinking (Tool Call)
 	toolCall := &contract.ToolCall{Name: "weather", Input: "{}"}
@@ -90,7 +90,7 @@ func TestCognitiveEngine_Run_WithTool(t *testing.T) {
 	mockToolExec.On("Execute", ctx, "weather", mock.Anything, "").Return(json.RawMessage(`"Sunny"`), nil).Once()
 
 	// Reflecting
-	mockLLM.On("Complete", ctx, mock.Anything).Return("Tool worked", nil).Once()
+	mockLLM.On("Complete", ctx, mock.Anything).Return(`{"analysis":"tool worked","next_action":"continue","new_memories":[]}`, nil).Once()
 
 	// Thinking (Final Answer)
 	mockLLM.On("ChatComplete", ctx, mock.Anything, mock.Anything).Return("It is Sunny", []*contract.ToolCall{}, nil).Once()

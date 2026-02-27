@@ -56,6 +56,8 @@ func (m *DefaultErrorMapper) MapError(err error) error {
 
 	case strings.Contains(errStr, "invalid input"), strings.Contains(errStr, "invalid request"), strings.Contains(errStr, "bad request"):
 		return fmt.Errorf("invalid request: %w", ErrInvalidInput)
+	case strings.Contains(errStr, "invalid model output"), strings.Contains(errStr, "malformed json"), strings.Contains(errStr, "invalid json"):
+		return fmt.Errorf("invalid model output: %w", ErrInvalidModelOutput)
 
 	case strings.Contains(errStr, "timeout"), strings.Contains(errStr, "deadline exceeded"):
 		return fmt.Errorf("request timeout: %w", ErrTransient)
@@ -116,6 +118,8 @@ func (m *DefaultErrorMapper) Category(err error) string {
 		return "ErrConflict"
 	case errors.Is(err, ErrTransient):
 		return "ErrTransient"
+	case errors.Is(err, ErrInvalidModelOutput):
+		return "ErrInvalidModelOutput"
 	case errors.Is(err, ErrInternal):
 		return "ErrInternal"
 	default:
@@ -172,6 +176,11 @@ func Transient(message string) error {
 // Internal wraps error as internal
 func Internal(message string) error {
 	return fmt.Errorf("%s: %w", message, ErrInternal)
+}
+
+// InvalidModelOutput wraps error as invalid model output
+func InvalidModelOutput(message string) error {
+	return fmt.Errorf("%s: %w", message, ErrInvalidModelOutput)
 }
 
 // IsRetryable checks if an error is transient or conflict related, indicating it can be retried

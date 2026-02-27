@@ -52,6 +52,17 @@ func (s *stubSessionManager) PersistTool(ctx context.Context, sessionID, toolCal
 	return nil
 }
 
+type stubResponseSink struct {
+	lastSessionID string
+	lastContent   string
+}
+
+func (s *stubResponseSink) Send(ctx context.Context, sessionID string, content string) error {
+	s.lastSessionID = sessionID
+	s.lastContent = content
+	return nil
+}
+
 func TestTaskManager_InjectsToolDefinitionsIntoSimpleTaskContext(t *testing.T) {
 	engine := &stubEngine{}
 	sessionManager := &stubSessionManager{
@@ -72,6 +83,9 @@ func TestTaskManager_InjectsToolDefinitionsIntoSimpleTaskContext(t *testing.T) {
 		nil,
 		3,
 		time.Second,
+		10,
+		4,
+		&stubResponseSink{},
 	)
 
 	err := manager.HandleRequest(context.Background(), "session-1", "Research release notes")
@@ -104,6 +118,9 @@ func TestTaskManager_AppliesToolBrokerBudget(t *testing.T) {
 		nil,
 		3,
 		time.Second,
+		10,
+		4,
+		&stubResponseSink{},
 	)
 	err := manager.HandleRequest(context.Background(), "session-2", "Research AI updates on the web")
 	assert.NoError(t, err)
@@ -136,6 +153,9 @@ func TestTaskManager_InjectsRelevantSkillsIntoContext(t *testing.T) {
 		registry,
 		3,
 		time.Second,
+		10,
+		4,
+		&stubResponseSink{},
 	)
 
 	err := manager.HandleRequest(context.Background(), "session-3", "Use $web_research to gather evidence")
@@ -145,4 +165,31 @@ func TestTaskManager_InjectsRelevantSkillsIntoContext(t *testing.T) {
 		assert.Contains(t, engine.capturedContext.Metadata["skills_context"], "web_research")
 		assert.Contains(t, engine.capturedContext.Metadata["skills_context"], "search_query")
 	}
+}
+
+func TestTaskManager_SendsFinalResponse(t *testing.T) {
+	engine := &stubEngine{}
+	sessionManager := &stubSessionManager{
+		context: &cognitive.CognitiveContext{SessionID: "session-send"},
+	}
+	sink := &stubResponseSink{}
+
+	manager := NewManager(
+		engine,
+		&stubDecomposer{},
+		sessionManager,
+		[]tool.ToolDescriptor{},
+		NewDefaultToolBroker(10),
+		nil,
+		3,
+		time.Second,
+		10,
+		4,
+		sink,
+	)
+
+	err := manager.HandleRequest(context.Background(), "session-send", "answer this")
+	assert.NoError(t, err)
+	assert.Equal(t, "session-send", sink.lastSessionID)
+	assert.Equal(t, "ok", sink.lastContent)
 }

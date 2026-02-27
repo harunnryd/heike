@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	stdatomic "sync/atomic"
 	"time"
 
 	"github.com/harunnryd/heike/internal/config"
@@ -92,7 +93,7 @@ type Worker struct {
 	wg                       sync.WaitGroup
 	sessionIndex             *SessionIndex
 	vectorDB                 *chromem.DB
-	running                  bool
+	running                  stdatomic.Bool
 	transcriptRotateMaxBytes int64
 }
 
@@ -207,9 +208,9 @@ func (w *Worker) Start() {
 
 func (w *Worker) loop() {
 	slog.Info("StoreWorker started", "workspace", w.workspaceID)
-	w.running = true
+	w.running.Store(true)
 	defer func() {
-		w.running = false
+		w.running.Store(false)
 		w.wg.Done()
 	}()
 
@@ -637,5 +638,5 @@ func (w *Worker) IsLockHeld() bool {
 }
 
 func (w *Worker) IsRunning() bool {
-	return w.fileLock.IsLocked() && w.running
+	return w.fileLock.IsLocked() && w.running.Load()
 }
