@@ -26,7 +26,7 @@ var daemonCmd = &cobra.Command{
 			return fmt.Errorf("config not loaded")
 		}
 
-		runtimeComp := NewDaemonRuntimeComponent(workspaceID, cfg, runtime.AdapterBuildOptions{
+		runtimeComp := runtime.NewDaemonRuntimeComponent(workspaceID, cfg, runtime.AdapterBuildOptions{
 			IncludeCLI:        false,
 			IncludeSystemNull: true,
 		})

@@ -1,11 +1,10 @@
-package main
+package runtime
 
 import (
 	"context"
 	"fmt"
 	"sync"
 
-	"github.com/harunnryd/heike/cmd/heike/runtime"
 	"github.com/harunnryd/heike/internal/config"
 	"github.com/harunnryd/heike/internal/daemon"
 )
@@ -14,14 +13,14 @@ type DaemonRuntimeComponent struct {
 	mu          sync.RWMutex
 	cfg         *config.Config
 	workspaceID string
-	adapterOpts runtime.AdapterBuildOptions
-	runtime     *runtime.RuntimeComponents
+	adapterOpts AdapterBuildOptions
+	runtime     *RuntimeComponents
 	initialized bool
 	started     bool
 	stopped     bool
 }
 
-func NewDaemonRuntimeComponent(workspaceID string, cfg *config.Config, adapterOpts runtime.AdapterBuildOptions) *DaemonRuntimeComponent {
+func NewDaemonRuntimeComponent(workspaceID string, cfg *config.Config, adapterOpts AdapterBuildOptions) *DaemonRuntimeComponent {
 	return &DaemonRuntimeComponent{
 		cfg:         cfg,
 		workspaceID: workspaceID,
@@ -52,7 +51,7 @@ func (c *DaemonRuntimeComponent) Init(ctx context.Context) error {
 	}
 
 	if c.runtime == nil {
-		components, err := runtime.NewRuntimeBuilder().
+		components, err := NewRuntimeBuilder().
 			WithContext(ctx).
 			WithConfig(c.cfg).
 			WithWorkspace(c.workspaceID).

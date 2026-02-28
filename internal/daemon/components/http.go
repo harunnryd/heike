@@ -27,7 +27,7 @@ type HTTPServerComponent struct {
 
 func NewHTTPServerComponent(d *daemon.Daemon, cfg *config.ServerConfig) *HTTPServerComponent {
 	return NewHTTPServerComponentWithDependencies(d, cfg, []string{
-		"StoreWorker", "PolicyEngine", "Orchestrator", "Ingress", "Workers", "Scheduler",
+		"Runtime",
 	})
 }
 

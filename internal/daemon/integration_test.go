@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/harunnryd/heike/internal/adapter"
+	"github.com/harunnryd/heike/cmd/heike/runtime"
 	"github.com/harunnryd/heike/internal/config"
 	"github.com/harunnryd/heike/internal/daemon"
 	"github.com/harunnryd/heike/internal/daemon/components"
@@ -28,30 +28,10 @@ func setupTestWorkspace(t *testing.T) (string, func()) {
 	return tmpDir, func() {}
 }
 
-func newTestAdapterManager(t *testing.T, cfg *config.Config) *adapter.RuntimeManager {
-	t.Helper()
-	eventHandler := func(ctx context.Context, source string, eventType string, sessionID string, content string, metadata map[string]string) error {
-		return nil
-	}
-	mgr, err := adapter.NewRuntimeManager(cfg.Adapters, eventHandler, adapter.RuntimeAdapterOptions{
-		IncludeCLI:        false,
-		IncludeSystemNull: true,
-	})
-	if err != nil {
-		t.Fatalf("failed to create adapter manager: %v", err)
-	}
-	return mgr
-}
-
-func TestDaemonFullLifecycle(t *testing.T) {
-	_, cleanup := setupTestWorkspace(t)
-	defer cleanup()
-
-	workspaceID := fmt.Sprintf("test-%d", time.Now().UnixNano())
-
-	cfg := &config.Config{
+func newTestConfig(port int) *config.Config {
+	return &config.Config{
 		Server: config.ServerConfig{
-			Port: 8081,
+			Port: port,
 		},
 		Governance: config.GovernanceConfig{},
 		Models: config.ModelsConfig{
@@ -65,32 +45,61 @@ func TestDaemonFullLifecycle(t *testing.T) {
 			},
 		},
 	}
+}
+
+func newRuntimeDaemon(t *testing.T, workspaceID string, cfg *config.Config) (*daemon.Daemon, *runtime.DaemonRuntimeComponent) {
+	t.Helper()
 
 	d, err := daemon.NewDaemon(workspaceID, cfg)
 	if err != nil {
-		t.Fatalf("Failed to create daemon: %v", err)
+		t.Fatalf("failed to create daemon: %v", err)
 	}
 
-	storeComp := components.NewStoreWorkerComponent(workspaceID, cfg.Daemon.WorkspacePath, &cfg.Store)
-	d.AddComponent(storeComp)
-
-	policyComp := components.NewPolicyEngineComponent(&cfg.Governance, workspaceID, cfg.Daemon.WorkspacePath)
-	d.AddComponent(policyComp)
-
-	adapterMgr := newTestAdapterManager(t, cfg)
-	orchComp := components.NewOrchestratorComponent(cfg, storeComp, policyComp, adapterMgr)
-	d.AddComponent(orchComp)
-
-	ingressComp := components.NewIngressComponent(storeComp, &cfg.Ingress, &cfg.Governance)
-	d.AddComponent(ingressComp)
-
-	workersComp := components.NewWorkersComponent(cfg, ingressComp, orchComp, storeComp)
-	d.AddComponent(workersComp)
-
-	schedulerComp := components.NewSchedulerComponent(cfg, ingressComp, workspaceID)
-	d.AddComponent(schedulerComp)
-
+	runtimeComp := runtime.NewDaemonRuntimeComponent(workspaceID, cfg, runtime.AdapterBuildOptions{
+		IncludeCLI:        false,
+		IncludeSystemNull: true,
+	})
+	d.AddComponent(runtimeComp)
 	d.AddComponent(components.NewHTTPServerComponent(d, &cfg.Server))
+
+	return d, runtimeComp
+}
+
+func waitForStatus(t *testing.T, d *daemon.Daemon, want daemon.HealthStatus, timeout time.Duration) {
+	t.Helper()
+
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if d.Health() == want {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("daemon status = %v, want %v", d.Health(), want)
+}
+
+func assertCancellationError(t *testing.T, err error) {
+	t.Helper()
+
+	if err == nil {
+		t.Fatal("daemon start should return an error when context is cancelled")
+	}
+	if !strings.Contains(err.Error(), "context canceled") && !strings.Contains(err.Error(), "shutdown cancelled") {
+		t.Fatalf("unexpected daemon shutdown error: %v", err)
+	}
+}
+
+func TestDaemonFullLifecycle(t *testing.T) {
+	_, cleanup := setupTestWorkspace(t)
+	defer cleanup()
+
+	workspaceID := fmt.Sprintf("test-%d", time.Now().UnixNano())
+	cfg := newTestConfig(18081)
+
+	d, runtimeComp := newRuntimeDaemon(t, workspaceID, cfg)
+	defer func() {
+		_ = runtimeComp.Stop(context.Background())
+	}()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -100,111 +109,47 @@ func TestDaemonFullLifecycle(t *testing.T) {
 		startDone <- d.Start(ctx)
 	}()
 
-	time.Sleep(500 * time.Millisecond)
-
-	if d.Health() != daemon.StatusRunning {
-		t.Errorf("Expected StatusRunning, got %v", d.Health())
-	}
+	waitForStatus(t, d, daemon.StatusRunning, 2*time.Second)
 
 	healths := d.ComponentHealth()
-	if len(healths) != 7 {
-		t.Errorf("Expected 7 components, got %d", len(healths))
+	if len(healths) != 2 {
+		t.Fatalf("expected 2 components, got %d", len(healths))
+	}
+	if _, ok := healths["Runtime"]; !ok {
+		t.Fatal("runtime health is missing")
+	}
+	if _, ok := healths["HTTPServer"]; !ok {
+		t.Fatal("http health is missing")
 	}
 
-	healthResp, err := http.Get("http://127.0.0.1:8081/health")
+	healthResp, err := http.Get("http://127.0.0.1:18081/health")
 	if err != nil {
-		t.Fatalf("Failed to get health endpoint: %v", err)
+		t.Fatalf("failed to call health endpoint: %v", err)
 	}
 	defer healthResp.Body.Close()
 
 	if healthResp.StatusCode != http.StatusOK {
-		t.Errorf("Expected status OK, got %v", healthResp.StatusCode)
+		t.Fatalf("health endpoint status = %d, want %d", healthResp.StatusCode, http.StatusOK)
 	}
 
 	body, err := io.ReadAll(healthResp.Body)
 	if err != nil {
-		t.Fatalf("Failed to read response body: %v", err)
+		t.Fatalf("failed to read health response body: %v", err)
 	}
-
 	if len(body) == 0 {
-		t.Error("Health endpoint returned empty body")
+		t.Fatal("health endpoint returned empty body")
 	}
 
 	cancel()
 
 	select {
 	case err := <-startDone:
-		if err == nil {
-			t.Error("Daemon.Start() should have returned error when context cancelled")
-		} else if !strings.Contains(err.Error(), "context canceled") && !strings.Contains(err.Error(), "shutdown cancelled") {
-			t.Errorf("Daemon.Start() returned unexpected error: %v", err)
-		}
+		assertCancellationError(t, err)
 	case <-time.After(10 * time.Second):
-		t.Error("Daemon did not shut down within timeout")
+		t.Fatal("daemon did not shut down in time")
 	}
 
-	// Wait a bit for shutdown to complete
-	time.Sleep(100 * time.Millisecond)
-
-	if d.Health() != daemon.StatusStopped {
-		t.Errorf("Expected StatusStopped after shutdown, got %v", d.Health())
-	}
-}
-
-func TestDaemonComponentInitOrder(t *testing.T) {
-	_, cleanup := setupTestWorkspace(t)
-	defer cleanup()
-
-	workspaceID := fmt.Sprintf("test-%d", time.Now().UnixNano())
-
-	cfg := &config.Config{
-		Server: config.ServerConfig{
-			Port: 8082,
-		},
-		Governance: config.GovernanceConfig{},
-	}
-
-	d, err := daemon.NewDaemon(workspaceID, cfg)
-	if err != nil {
-		t.Fatalf("Failed to create daemon: %v", err)
-	}
-
-	storeComp := components.NewStoreWorkerComponent(workspaceID, cfg.Daemon.WorkspacePath, &cfg.Store)
-	policyComp := components.NewPolicyEngineComponent(&cfg.Governance, workspaceID, cfg.Daemon.WorkspacePath)
-
-	d.AddComponent(storeComp)
-	d.AddComponent(policyComp)
-
-	adapterMgr := newTestAdapterManager(t, cfg)
-	orchComp := components.NewOrchestratorComponent(cfg, storeComp, policyComp, adapterMgr)
-	d.AddComponent(orchComp)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-
-	startDone := make(chan error, 1)
-	go func() {
-		startDone <- d.Start(ctx)
-	}()
-
-	time.Sleep(300 * time.Millisecond)
-
-	if d.Health() != daemon.StatusRunning {
-		t.Errorf("Expected StatusRunning, got %v", d.Health())
-	}
-
-	cancel()
-
-	select {
-	case err := <-startDone:
-		if err == nil {
-			t.Error("Daemon.Start() should have returned error when context cancelled")
-		} else if !strings.Contains(err.Error(), "context canceled") && !strings.Contains(err.Error(), "shutdown cancelled") {
-			t.Errorf("Daemon.Start() returned unexpected error: %v", err)
-		}
-	case <-time.After(10 * time.Second):
-		t.Error("Daemon did not shut down within timeout")
-	}
+	waitForStatus(t, d, daemon.StatusStopped, 2*time.Second)
 }
 
 func TestDaemonHealthEndpoint(t *testing.T) {
@@ -212,43 +157,22 @@ func TestDaemonHealthEndpoint(t *testing.T) {
 	defer cleanup()
 
 	workspaceID := fmt.Sprintf("test-%d", time.Now().UnixNano())
+	cfg := newTestConfig(18082)
 
-	cfg := &config.Config{
-		Server: config.ServerConfig{
-			Port: 8083,
-		},
-		Governance: config.GovernanceConfig{},
-	}
-
-	d, err := daemon.NewDaemon(workspaceID, cfg)
-	if err != nil {
-		t.Fatalf("Failed to create daemon: %v", err)
-	}
-
-	storeComp := components.NewStoreWorkerComponent(workspaceID, cfg.Daemon.WorkspacePath, &cfg.Store)
-	policyComp := components.NewPolicyEngineComponent(&cfg.Governance, workspaceID, cfg.Daemon.WorkspacePath)
-	adapterMgr := newTestAdapterManager(t, cfg)
-	orchComp := components.NewOrchestratorComponent(cfg, storeComp, policyComp, adapterMgr)
-	ingressComp := components.NewIngressComponent(storeComp, &cfg.Ingress, &cfg.Governance)
-	workersComp := components.NewWorkersComponent(cfg, ingressComp, orchComp, storeComp)
-	schedulerComp := components.NewSchedulerComponent(cfg, ingressComp, workspaceID)
-
-	d.AddComponent(storeComp)
-	d.AddComponent(policyComp)
-	d.AddComponent(orchComp)
-	d.AddComponent(ingressComp)
-	d.AddComponent(workersComp)
-	d.AddComponent(schedulerComp)
-	d.AddComponent(components.NewHTTPServerComponent(d, &cfg.Server))
+	d, runtimeComp := newRuntimeDaemon(t, workspaceID, cfg)
+	defer func() {
+		_ = runtimeComp.Stop(context.Background())
+	}()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
+	startDone := make(chan error, 1)
 	go func() {
-		_ = d.Start(ctx)
+		startDone <- d.Start(ctx)
 	}()
 
-	time.Sleep(2 * time.Second)
+	waitForStatus(t, d, daemon.StatusRunning, 2*time.Second)
 
 	tests := []struct {
 		name           string
@@ -257,34 +181,40 @@ func TestDaemonHealthEndpoint(t *testing.T) {
 	}{
 		{
 			name:           "GET health endpoint",
-			method:         "GET",
+			method:         http.MethodGet,
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:           "POST health endpoint (should fail)",
-			method:         "POST",
+			name:           "POST health endpoint",
+			method:         http.MethodPost,
 			expectedStatus: http.StatusMethodNotAllowed,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req, _ := http.NewRequest(tt.method, "http://127.0.0.1:8083/health", nil)
+			req, _ := http.NewRequest(tt.method, "http://127.0.0.1:18082/health", nil)
 			client := &http.Client{Timeout: 2 * time.Second}
 			resp, err := client.Do(req)
 			if err != nil {
-				t.Fatalf("Failed to send request: %v", err)
+				t.Fatalf("failed to call health endpoint: %v", err)
 			}
 			defer resp.Body.Close()
 
 			if resp.StatusCode != tt.expectedStatus {
-				t.Errorf("Expected status %v, got %v", tt.expectedStatus, resp.StatusCode)
+				t.Fatalf("status = %d, want %d", resp.StatusCode, tt.expectedStatus)
 			}
 		})
 	}
 
 	cancel()
-	time.Sleep(500 * time.Millisecond)
+
+	select {
+	case err := <-startDone:
+		assertCancellationError(t, err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("daemon did not shut down in time")
+	}
 }
 
 func TestDaemonGracefulShutdown(t *testing.T) {
@@ -292,70 +222,38 @@ func TestDaemonGracefulShutdown(t *testing.T) {
 	defer cleanup()
 
 	workspaceID := fmt.Sprintf("test-%d", time.Now().UnixNano())
+	cfg := newTestConfig(18083)
 
-	cfg := &config.Config{
-		Server: config.ServerConfig{
-			Port: 8084,
-		},
-		Governance: config.GovernanceConfig{},
-	}
-
-	d, err := daemon.NewDaemon(workspaceID, cfg)
-	if err != nil {
-		t.Fatalf("Failed to create daemon: %v", err)
-	}
-
-	storeComp := components.NewStoreWorkerComponent(workspaceID, cfg.Daemon.WorkspacePath, &cfg.Store)
-	policyComp := components.NewPolicyEngineComponent(&cfg.Governance, workspaceID, cfg.Daemon.WorkspacePath)
-	adapterMgr := newTestAdapterManager(t, cfg)
-	orchComp := components.NewOrchestratorComponent(cfg, storeComp, policyComp, adapterMgr)
-	ingressComp := components.NewIngressComponent(storeComp, &cfg.Ingress, &cfg.Governance)
-	workersComp := components.NewWorkersComponent(cfg, ingressComp, orchComp, storeComp)
-	schedulerComp := components.NewSchedulerComponent(cfg, ingressComp, workspaceID)
-
-	d.AddComponent(storeComp)
-	d.AddComponent(policyComp)
-	d.AddComponent(orchComp)
-	d.AddComponent(ingressComp)
-	d.AddComponent(workersComp)
-	d.AddComponent(schedulerComp)
-	d.AddComponent(components.NewHTTPServerComponent(d, &cfg.Server))
+	d, runtimeComp := newRuntimeDaemon(t, workspaceID, cfg)
+	defer func() {
+		_ = runtimeComp.Stop(context.Background())
+	}()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
+	startDone := make(chan error, 1)
 	go func() {
-		_ = d.Start(ctx)
+		startDone <- d.Start(ctx)
 	}()
 
-	time.Sleep(500 * time.Millisecond)
-
-	if d.Health() != daemon.StatusRunning {
-		t.Errorf("Expected StatusRunning, got %v", d.Health())
-	}
+	waitForStatus(t, d, daemon.StatusRunning, 2*time.Second)
 
 	healths := d.ComponentHealth()
 	for name, health := range healths {
 		if !health.Healthy {
-			t.Logf("Component %s is unhealthy: %v", name, health.Error)
+			t.Fatalf("component %s unhealthy: %v", name, health.Error)
 		}
 	}
 
 	cancel()
 
-	shutdownStart := time.Now()
-	timeout := time.After(10 * time.Second)
-
 	select {
-	case <-timeout:
-		t.Error("Daemon did not shut down within 10 seconds")
-	case <-time.After(100 * time.Millisecond):
+	case err := <-startDone:
+		assertCancellationError(t, err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("daemon did not shut down in time")
 	}
 
-	shutdownDuration := time.Since(shutdownStart)
-	t.Logf("Graceful shutdown took %v", shutdownDuration)
-
-	if d.Health() != daemon.StatusStopped {
-		t.Errorf("Expected StatusStopped after shutdown, got %v", d.Health())
-	}
+	waitForStatus(t, d, daemon.StatusStopped, 2*time.Second)
 }

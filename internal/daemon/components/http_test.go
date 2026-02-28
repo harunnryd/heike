@@ -10,7 +10,7 @@ func TestNewHTTPServerComponent_DefaultDependencies(t *testing.T) {
 	comp := NewHTTPServerComponent(nil, &config.ServerConfig{Port: 8080})
 	deps := comp.Dependencies()
 
-	want := []string{"StoreWorker", "PolicyEngine", "Orchestrator", "Ingress", "Workers", "Scheduler"}
+	want := []string{"Runtime"}
 	if len(deps) != len(want) {
 		t.Fatalf("dependencies length = %d, want %d", len(deps), len(want))
 	}
