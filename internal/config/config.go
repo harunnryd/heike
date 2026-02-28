@@ -30,6 +30,7 @@ type Config struct {
 	Orchestrator OrchestratorConfig `koanf:"orchestrator"`
 	Worker       WorkerConfig       `koanf:"worker"`
 	Scheduler    SchedulerConfig    `koanf:"scheduler"`
+	Zanshin      ZanshinConfig      `koanf:"zanshin"`
 	Daemon       DaemonConfig       `koanf:"daemon"`
 }
 
@@ -88,6 +89,15 @@ type DaemonConfig struct {
 	PreflightTimeout       string `koanf:"preflight_timeout"`
 	StaleLockTTL           string `koanf:"stale_lock_ttl"`
 	WorkspacePath          string `koanf:"workspace_path"`
+}
+
+type ZanshinConfig struct {
+	Enabled           bool    `koanf:"enabled"`
+	TriggerThreshold  float64 `koanf:"trigger_threshold"`
+	PruneThreshold    float64 `koanf:"prune_threshold"`
+	SimilarityEpsilon float64 `koanf:"similarity_epsilon"`
+	ClusterCount      int     `koanf:"cluster_count"`
+	MaxIdleTime       string  `koanf:"max_idle_time"`
 }
 
 type AdaptersConfig struct {
@@ -307,6 +317,12 @@ const (
 	DefaultDaemonStartupShutdownTimeout    = "10s"
 	DefaultDaemonPreflightTimeout          = "10s"
 	DefaultDaemonStaleLockTTL              = "15m"
+	DefaultZanshinEnabled                  = true
+	DefaultZanshinTriggerThreshold         = 0.5
+	DefaultZanshinPruneThreshold           = 0.3
+	DefaultZanshinSimilarityEpsilon        = 0.85
+	DefaultZanshinClusterCount             = 10
+	DefaultZanshinMaxIdleTime              = "30m"
 )
 
 func Load(cmd *cobra.Command) (*Config, error) {
@@ -398,6 +414,12 @@ func Load(cmd *cobra.Command) (*Config, error) {
 		"daemon.preflight_timeout":              DefaultDaemonPreflightTimeout,
 		"daemon.stale_lock_ttl":                 DefaultDaemonStaleLockTTL,
 		"daemon.workspace_path":                 filepath.Join(os.Getenv("HOME"), ".heike", "workspaces"),
+		"zanshin.enabled":                       DefaultZanshinEnabled,
+		"zanshin.trigger_threshold":             DefaultZanshinTriggerThreshold,
+		"zanshin.prune_threshold":               DefaultZanshinPruneThreshold,
+		"zanshin.similarity_epsilon":            DefaultZanshinSimilarityEpsilon,
+		"zanshin.cluster_count":                 DefaultZanshinClusterCount,
+		"zanshin.max_idle_time":                 DefaultZanshinMaxIdleTime,
 	}
 	for key, value := range defaults {
 		k.Set(key, value)

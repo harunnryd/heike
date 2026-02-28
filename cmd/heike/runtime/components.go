@@ -19,6 +19,7 @@ import (
 	"github.com/harunnryd/heike/internal/store"
 	"github.com/harunnryd/heike/internal/tool"
 	"github.com/harunnryd/heike/internal/worker"
+	"github.com/harunnryd/heike/internal/zanshin"
 )
 
 type RuntimeComponents struct {
@@ -41,6 +42,8 @@ type RuntimeComponents struct {
 	ToolRegistry  *tool.Registry
 	SkillRegistry *skill.Registry
 	AdapterMgr    *adapter.RuntimeManager
+
+	Zanshin *zanshin.Engine
 
 	Locks *concurrency.SimpleSessionLockManager
 }
@@ -92,7 +95,13 @@ func NewRuntimeComponentsWithOptions(ctx context.Context, cfg *config.Config, wo
 		}
 
 		evt := ingress.NewEvent(source, msgType, sessionID, content, metadata)
-		return components.Ingress.Submit(evtCtx, &evt)
+		if err := components.Ingress.Submit(evtCtx, &evt); err != nil {
+			return err
+		}
+		if components.Zanshin != nil {
+			components.Zanshin.NotifyInteraction()
+		}
+		return nil
 	}
 
 	adapterMgr, err := adapter.NewRuntimeManager(cfg.Adapters, eventHandler, adapter.RuntimeAdapterOptions{
@@ -182,6 +191,12 @@ func NewRuntimeComponentsWithOptions(ctx context.Context, cfg *config.Config, wo
 	components.InteractiveWorker = workersStruct.InteractiveWorker
 	components.BackgroundWorker = workersStruct.BackgroundWorker
 	components.Locks = workersStruct.Locks
+	components.Zanshin = zanshin.NewEngine(cfg.Zanshin, func() int {
+		if components.Ingress == nil {
+			return 0
+		}
+		return len(components.Ingress.InteractiveQueue())
+	})
 
 	schedulerInitializer := initializers.NewSchedulerInitializer(components.Ingress)
 	schedComponent, err := schedulerInitializer.Initialize(ctx, cfg, workspaceID)
@@ -228,6 +243,10 @@ func (r *RuntimeComponents) Start() error {
 
 	if r.AdapterMgr != nil {
 		r.AdapterMgr.Start(r.Ctx)
+	}
+
+	if r.Zanshin != nil {
+		r.Zanshin.Start(r.Ctx)
 	}
 	return nil
 }

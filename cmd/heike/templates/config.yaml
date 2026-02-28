@@ -362,6 +362,28 @@ daemon:
   workspace_path: ~/.heike/workspaces
 
 # ============================================================================
+# ZANSHIN Configuration
+# ============================================================================
+zanshin:
+  # Enable background idle cognitive processing
+  enabled: true
+
+  # Trigger threshold for idle processing
+  trigger_threshold: 0.5
+
+  # Memory pruning threshold
+  prune_threshold: 0.3
+
+  # Similarity threshold for memory integration
+  similarity_epsilon: 0.85
+
+  # Number of clusters for synthesized patterns
+  cluster_count: 10
+
+  # Maximum idle duration before forced zanshin cycle
+  max_idle_time: 30m
+
+# ============================================================================
 # Adapter Configuration
 # ============================================================================
 adapters:
@@ -456,6 +478,12 @@ adapters:
 # HEIKE_DAEMON_PREFLIGHT_TIMEOUT - Override daemon.preflight_timeout
 # HEIKE_DAEMON_STALE_LOCK_TTL - Override daemon.stale_lock_ttl
 # HEIKE_DAEMON_WORKSPACE_PATH - Override daemon.workspace_path
+# HEIKE_ZANSHIN_ENABLED - Override zanshin.enabled
+# HEIKE_ZANSHIN_TRIGGER_THRESHOLD - Override zanshin.trigger_threshold
+# HEIKE_ZANSHIN_PRUNE_THRESHOLD - Override zanshin.prune_threshold
+# HEIKE_ZANSHIN_SIMILARITY_EPSILON - Override zanshin.similarity_epsilon
+# HEIKE_ZANSHIN_CLUSTER_COUNT - Override zanshin.cluster_count
+# HEIKE_ZANSHIN_MAX_IDLE_TIME - Override zanshin.max_idle_time
 # HEIKE_ADAPTERS_SLACK_ENABLED   - Override adapters.slack.enabled
 # HEIKE_ADAPTERS_SLACK_PORT      - Override adapters.slack.port
 # HEIKE_ADAPTERS_SLACK_SIGNING_SECRET - Override adapters.slack.signing_secret

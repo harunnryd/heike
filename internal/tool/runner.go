@@ -48,12 +48,16 @@ func (r *Runner) Execute(ctx context.Context, toolName string, input json.RawMes
 	}
 
 	// Policy Check
+	consumedByPolicy := false
 	if approvalID != "" {
 		// If ID provided, verify it is GRANTED
 		if !r.policy.IsGranted(approvalID) {
 			return nil, heikeErrors.PermissionDenied("approval not granted")
 		}
-		// Proceed
+		// Quota for approval-gated execution is consumed on actual execution attempt.
+		if err := r.policy.ConsumeQuota(resolvedToolName); err != nil {
+			return nil, err
+		}
 	} else {
 		// New check
 		allowed, id, err := r.policy.Check(resolvedToolName, input)
@@ -63,6 +67,15 @@ func (r *Runner) Execute(ctx context.Context, toolName string, input json.RawMes
 				return nil, fmt.Errorf("%w: %s", heikeErrors.ErrApprovalRequired, id)
 			}
 			return nil, err // Denied
+		}
+		consumedByPolicy = true
+	}
+
+	if !consumedByPolicy && approvalID == "" {
+		// Defensive fail-safe. Should never happen because policy.Check handles
+		// quota accounting for allowed requests.
+		if err := r.policy.ConsumeQuota(resolvedToolName); err != nil {
+			return nil, err
 		}
 	}
 

@@ -83,3 +83,30 @@ func TestRunnerExecute_SandboxRequireEscalatedRequiresApproval(t *testing.T) {
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, heikeErrors.ErrApprovalRequired))
 }
+
+func TestRunnerExecute_ApprovalPathConsumesQuota(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	pol, err := policy.NewEngine(config.GovernanceConfig{
+		RequireApproval: []string{"exec_command"},
+		DailyToolLimit:  1,
+	}, "approval-quota-"+t.Name(), "")
+	require.NoError(t, err)
+
+	_, approvalID, err := pol.Check("exec_command", json.RawMessage(`{}`))
+	require.Error(t, err)
+	require.True(t, errors.Is(err, heikeErrors.ErrApprovalRequired))
+	require.NotEmpty(t, approvalID)
+	require.NoError(t, pol.Resolve(approvalID, true))
+
+	registry := NewRegistry()
+	registry.Register(&stubLookupTool{name: "exec_command"})
+	runner := NewRunner(registry, pol)
+
+	_, err = runner.Execute(context.Background(), "exec_command", json.RawMessage(`{}`), approvalID)
+	require.NoError(t, err)
+
+	_, err = runner.Execute(context.Background(), "exec_command", json.RawMessage(`{}`), approvalID)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "quota exceeded")
+}

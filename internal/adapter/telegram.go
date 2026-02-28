@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
+	"sync"
 
 	"github.com/harunnryd/heike/internal/config"
 	"github.com/harunnryd/heike/internal/errors"
@@ -18,6 +19,8 @@ type TelegramAdapter struct {
 	eventHandler  EventHandler
 	bot           *tgbotapi.BotAPI
 	updates       tgbotapi.UpdatesChannel
+	cancel        context.CancelFunc
+	wg            sync.WaitGroup
 }
 
 func NewTelegramAdapter(token string, eventHandler EventHandler, updateTimeout int) *TelegramAdapter {
@@ -36,6 +39,9 @@ func (t *TelegramAdapter) Name() string {
 }
 
 func (t *TelegramAdapter) Start(ctx context.Context) error {
+	runCtx, cancel := context.WithCancel(ctx)
+	t.cancel = cancel
+
 	var err error
 	t.bot, err = tgbotapi.NewBotAPI(t.token)
 	if err != nil {
@@ -49,13 +55,18 @@ func (t *TelegramAdapter) Start(ctx context.Context) error {
 
 	t.updates = t.bot.GetUpdatesChan(u)
 
+	t.wg.Add(1)
 	go func() {
+		defer t.wg.Done()
 		for {
 			select {
-			case <-ctx.Done():
+			case <-runCtx.Done():
 				return
-			case update := <-t.updates:
-				t.handleUpdate(ctx, update)
+			case update, ok := <-t.updates:
+				if !ok {
+					return
+				}
+				t.handleUpdate(runCtx, update)
 			}
 		}
 	}()
@@ -64,7 +75,25 @@ func (t *TelegramAdapter) Start(ctx context.Context) error {
 }
 
 func (t *TelegramAdapter) Stop(ctx context.Context) error {
-	return nil
+	if t.cancel != nil {
+		t.cancel()
+	}
+	if t.bot != nil {
+		t.bot.StopReceivingUpdates()
+	}
+
+	waitDone := make(chan struct{})
+	go func() {
+		t.wg.Wait()
+		close(waitDone)
+	}()
+
+	select {
+	case <-waitDone:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (t *TelegramAdapter) handleUpdate(ctx context.Context, update tgbotapi.Update) {

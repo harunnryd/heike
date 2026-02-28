@@ -9,8 +9,15 @@ import (
 const DefaultWorkspaceID = config.DefaultWorkspaceID
 
 func ResolveWorkspaceID(cmd *cobra.Command) string {
-	if workspaceID, _ := cmd.Flags().GetString("workspace"); workspaceID != "" {
-		return workspaceID
+	if cmd != nil {
+		if flag := cmd.Flag("workspace"); flag != nil {
+			if workspaceID := flag.Value.String(); workspaceID != "" {
+				return workspaceID
+			}
+		}
+		if workspaceID, err := cmd.Flags().GetString("workspace"); err == nil && workspaceID != "" {
+			return workspaceID
+		}
 	}
 
 	return config.DefaultWorkspaceID

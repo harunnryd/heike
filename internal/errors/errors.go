@@ -1,7 +1,9 @@
 package errors
 
 import (
+	"context"
 	"errors"
+	"fmt"
 )
 
 // Sentinel errors for different categories
@@ -33,3 +35,58 @@ var (
 	// ErrInternal - internal error (generic message + trace id in interactive, retry once then fail in background)
 	ErrInternal = errors.New("internal error")
 )
+
+func Wrap(err error, message string) error {
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("%s: %w", message, err)
+}
+
+func WrapWithCategory(err error, message string, category error) error {
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("%s: %w", message, category)
+}
+
+func IsCategory(err error, category error) bool {
+	if err == nil {
+		return false
+	}
+	return errors.Is(err, category)
+}
+
+func NotFound(message string) error {
+	return fmt.Errorf("%s: %w", message, ErrNotFound)
+}
+
+func PermissionDenied(message string) error {
+	return fmt.Errorf("%s: %w", message, ErrPermissionDenied)
+}
+
+func InvalidInput(message string) error {
+	return fmt.Errorf("%s: %w", message, ErrInvalidInput)
+}
+
+func Transient(message string) error {
+	return fmt.Errorf("%s: %w", message, ErrTransient)
+}
+
+func Internal(message string) error {
+	return fmt.Errorf("%s: %w", message, ErrInternal)
+}
+
+func InvalidModelOutput(message string) error {
+	return fmt.Errorf("%s: %w", message, ErrInvalidModelOutput)
+}
+
+func IsRetryable(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) {
+		return false
+	}
+	return errors.Is(err, ErrTransient) || errors.Is(err, ErrConflict)
+}

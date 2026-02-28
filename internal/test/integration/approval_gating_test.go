@@ -2,9 +2,11 @@ package integration_test
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/harunnryd/heike/internal/config"
+	heikeErrors "github.com/harunnryd/heike/internal/errors"
 	"github.com/harunnryd/heike/internal/policy"
 )
 
@@ -38,7 +40,7 @@ func TestApprovalGating(t *testing.T) {
 
 	t.Run("Tools requiring approval should be gated", func(t *testing.T) {
 		allowed, approvalID, err := engine.Check("exec.command", json.RawMessage(`{"command":"ls"}`))
-		if err != policy.ErrApprovalRequired {
+		if !errors.Is(err, heikeErrors.ErrApprovalRequired) {
 			t.Errorf("Expected ErrApprovalRequired, got: %v", err)
 		}
 		if allowed {
@@ -80,7 +82,7 @@ func TestApprovalFlow(t *testing.T) {
 
 	t.Run("Approval request creation", func(t *testing.T) {
 		allowed, approvalID, err := engine.Check("exec.command", json.RawMessage(`{"command":"rm -rf /"}`))
-		if err != policy.ErrApprovalRequired {
+		if !errors.Is(err, heikeErrors.ErrApprovalRequired) {
 			t.Errorf("Expected ErrApprovalRequired, got: %v", err)
 		}
 		if allowed {
@@ -158,7 +160,7 @@ func TestWebBrowseDomainGating(t *testing.T) {
 
 	t.Run("Unknown domain should require approval", func(t *testing.T) {
 		allowed, approvalID, err := engine.Check("web.browse", json.RawMessage(`{"url":"https://unknown-domain.com"}`))
-		if err != policy.ErrApprovalRequired {
+		if !errors.Is(err, heikeErrors.ErrApprovalRequired) {
 			t.Errorf("Expected ErrApprovalRequired, got: %v", err)
 		}
 		if allowed {

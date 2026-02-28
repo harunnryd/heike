@@ -177,23 +177,56 @@ func TestDaemonHealthEndpoint(t *testing.T) {
 	tests := []struct {
 		name           string
 		method         string
+		url            string
+		body           string
 		expectedStatus int
 	}{
 		{
 			name:           "GET health endpoint",
 			method:         http.MethodGet,
+			url:            "http://127.0.0.1:18082/health",
 			expectedStatus: http.StatusOK,
 		},
 		{
 			name:           "POST health endpoint",
 			method:         http.MethodPost,
+			url:            "http://127.0.0.1:18082/health",
 			expectedStatus: http.StatusMethodNotAllowed,
+		},
+		{
+			name:           "POST event endpoint",
+			method:         http.MethodPost,
+			url:            "http://127.0.0.1:18082/api/v1/events",
+			body:           `{"source":"cli","type":"user_message","content":"hello integration test"}`,
+			expectedStatus: http.StatusAccepted,
+		},
+		{
+			name:           "GET sessions endpoint",
+			method:         http.MethodGet,
+			url:            "http://127.0.0.1:18082/api/v1/sessions",
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "GET approvals endpoint",
+			method:         http.MethodGet,
+			url:            "http://127.0.0.1:18082/api/v1/approvals",
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "GET zanshin endpoint",
+			method:         http.MethodGet,
+			url:            "http://127.0.0.1:18082/api/v1/zanshin/status",
+			expectedStatus: http.StatusOK,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req, _ := http.NewRequest(tt.method, "http://127.0.0.1:18082/health", nil)
+			var body io.Reader
+			if tt.body != "" {
+				body = strings.NewReader(tt.body)
+			}
+			req, _ := http.NewRequest(tt.method, tt.url, body)
 			client := &http.Client{Timeout: 2 * time.Second}
 			resp, err := client.Do(req)
 			if err != nil {

@@ -316,6 +316,17 @@ func (d *Daemon) getComponentByName(name string) Component {
 	return nil
 }
 
+func (d *Daemon) Component(name string) Component {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	for _, comp := range d.components {
+		if comp.Name() == name {
+			return comp
+		}
+	}
+	return nil
+}
+
 func (d *Daemon) monitorPanic() {
 	for panicValue := range d.panicChan {
 		slog.Error("Panic detected in daemon", "panic", panicValue)

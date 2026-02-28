@@ -19,6 +19,7 @@ var rootCmd = &cobra.Command{
 	Use:   "heike",
 	Short: "Heike AI Runtime",
 	Long:  `Heike is a deterministic, guarded, and proactive AI runtime.`,
+	RunE:  runDaemonCommand,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		var err error
 		cfg, err = config.Load(cmd)
@@ -42,4 +43,6 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.heike/config.yaml)")
 	rootCmd.PersistentFlags().String("server.log_level", config.DefaultServerLogLevel, "log level (debug, info, warn, error)")
 	rootCmd.PersistentFlags().Int("server.port", config.DefaultServerPort, "server port")
+	rootCmd.Flags().StringP("workspace", "w", "", "Target workspace ID")
+	rootCmd.Flags().Bool("force-clean-locks", false, "Force cleanup of stale lock files (default: warn-only)")
 }

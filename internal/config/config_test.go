@@ -94,6 +94,15 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.Daemon.PreflightTimeout != DefaultDaemonPreflightTimeout {
 		t.Errorf("Expected default daemon preflight timeout %s, got %s", DefaultDaemonPreflightTimeout, cfg.Daemon.PreflightTimeout)
 	}
+	if cfg.Zanshin.Enabled != DefaultZanshinEnabled {
+		t.Errorf("Expected default zanshin enabled %v, got %v", DefaultZanshinEnabled, cfg.Zanshin.Enabled)
+	}
+	if cfg.Zanshin.TriggerThreshold != DefaultZanshinTriggerThreshold {
+		t.Errorf("Expected default zanshin trigger threshold %v, got %v", DefaultZanshinTriggerThreshold, cfg.Zanshin.TriggerThreshold)
+	}
+	if cfg.Zanshin.MaxIdleTime != DefaultZanshinMaxIdleTime {
+		t.Errorf("Expected default zanshin max idle %s, got %s", DefaultZanshinMaxIdleTime, cfg.Zanshin.MaxIdleTime)
+	}
 	if cfg.Store.LockTimeout != DefaultStoreLockTimeout {
 		t.Errorf("Expected default store lock timeout %s, got %s", DefaultStoreLockTimeout, cfg.Store.LockTimeout)
 	}

@@ -13,10 +13,11 @@ import (
 type ErrorType string
 
 const (
-	ErrTransient ErrorType = "transient"
-	ErrLogic     ErrorType = "logic"
-	ErrFatal     ErrorType = "fatal"
-	ErrMaxTurns  ErrorType = "max_turns_reached"
+	ErrTransient      ErrorType = "transient"
+	ErrLogic          ErrorType = "logic"
+	ErrFatal          ErrorType = "fatal"
+	ErrMaxTurns       ErrorType = "max_turns_reached"
+	maxRetriesPerTurn           = 3
 )
 
 type CognitiveError struct {
@@ -108,6 +109,7 @@ func (e *DefaultCognitiveEngine) Run(ctx context.Context, goal string, opts ...E
 	slog.Debug("Plan generated", "steps", len(plan.Steps))
 
 	// Cognitive Loop (Decide & Act)
+	retryCount := 0
 	for i := 0; i < e.maxTurns; i++ {
 		// Check for cancellation
 		if ctx.Err() != nil {
@@ -172,22 +174,31 @@ func (e *DefaultCognitiveEngine) Run(ctx context.Context, goal string, opts ...E
 			// Handle Control Signals
 			switch reflection.NextAction {
 			case SignalRetry:
-				slog.Info("Reflector requested retry")
-				// Logic to retry logic (decrement counter?)
-				i-- // Naive retry: just don't count this turn? Or keep counting to avoid infinite loop?
-				// Better: keep counting, but don't advance plan step.
+				if retryCount >= maxRetriesPerTurn {
+					slog.Warn("Max retries exceeded, advancing turn", "turn", i+1, "max_retries", maxRetriesPerTurn)
+					retryCount = 0
+					continue
+				}
+				retryCount++
+				slog.Info("Reflector requested retry", "turn", i+1, "retry", retryCount, "max_retries", maxRetriesPerTurn)
+				i--
+				continue
 			case SignalReplan:
+				retryCount = 0
 				slog.Info("Reflector requested replan")
 				newPlan, err := e.planner.Plan(ctx, goal, cCtx)
 				if err == nil {
 					cCtx.CurrentPlan = newPlan
 				}
 			case SignalStop:
+				retryCount = 0
 				slog.Info("Reflector requested stop")
 				return &Result{
 					Content: "Stopped by reflector: " + reflection.Content,
 					Meta:    map[string]interface{}{"turns": i + 1},
 				}, nil
+			default:
+				retryCount = 0
 			}
 
 			// Optional: Persist new memories if memory manager is available

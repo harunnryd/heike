@@ -3,26 +3,22 @@ package policy
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/harunnryd/heike/internal/config"
+	heikeErrors "github.com/harunnryd/heike/internal/errors"
 	"github.com/harunnryd/heike/internal/store"
 
 	"github.com/natefinch/atomic"
 	"github.com/oklog/ulid/v2"
-)
-
-var (
-	ErrApprovalRequired = errors.New("approval required")
-	ErrPermissionDenied = errors.New("permission denied")
 )
 
 type ApprovalStatus string
@@ -145,7 +141,7 @@ func (e *Engine) Check(toolName string, input json.RawMessage) (bool, string, er
 		case sandboxPermissionRequireEscalated:
 			return e.createApproval(toolName, input)
 		default:
-			return false, "", fmt.Errorf("sandbox_permissions %q is denied: %w", sandboxPerm, ErrPermissionDenied)
+			return false, "", fmt.Errorf("sandbox_permissions %q is denied: %w", sandboxPerm, heikeErrors.ErrPermissionDenied)
 		}
 	}
 
@@ -153,19 +149,20 @@ func (e *Engine) Check(toolName string, input json.RawMessage) (bool, string, er
 	if count := e.usage[toolName]; count >= e.dailyLimit {
 		return false, "", fmt.Errorf("quota exceeded for tool %s", toolName)
 	}
-	e.usage[toolName]++
 
 	// Domain allowlist applies to any tool input that carries a URL.
 	if host, ok := extractHostFromInput(input); ok {
 		if !containsDomain(e.allowedDomains, host) {
 			return e.createApproval(toolName, input)
 		}
+		e.consumeQuotaLocked(toolName)
 		return true, "", nil
 	}
 
 	// Check Auto-Allow List
 	for _, allowed := range e.config.AutoAllow {
 		if normalizeToolName(allowed) == toolName {
+			e.consumeQuotaLocked(toolName)
 			return true, "", nil
 		}
 	}
@@ -181,6 +178,7 @@ func (e *Engine) Check(toolName string, input json.RawMessage) (bool, string, er
 
 	// Create Approval Request
 	if !requiresApproval {
+		e.consumeQuotaLocked(toolName)
 		return true, "", nil
 	}
 
@@ -203,7 +201,7 @@ func (e *Engine) createApproval(toolName string, input json.RawMessage) (bool, s
 	}
 
 	slog.Info("Approval required", "id", id, "tool", toolName)
-	return false, id, ErrApprovalRequired
+	return false, id, heikeErrors.ErrApprovalRequired
 }
 
 // Resolve updates the status of an approval.
@@ -291,4 +289,44 @@ func (e *Engine) IsGranted(id string) bool {
 
 	app, ok := e.approvals[id]
 	return ok && app.Status == StatusGranted
+}
+
+func (e *Engine) consumeQuotaLocked(toolName string) {
+	e.usage[normalizeToolName(toolName)]++
+}
+
+func (e *Engine) ConsumeQuota(toolName string) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	normalized := normalizeToolName(toolName)
+	if e.usage[normalized] >= e.dailyLimit {
+		return fmt.Errorf("quota exceeded for tool %s", normalized)
+	}
+	e.consumeQuotaLocked(normalized)
+	return nil
+}
+
+func (e *Engine) ListApprovals(statuses ...ApprovalStatus) []Approval {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	filter := make(map[ApprovalStatus]struct{}, len(statuses))
+	for _, status := range statuses {
+		filter[status] = struct{}{}
+	}
+
+	approvals := make([]Approval, 0, len(e.approvals))
+	for _, approval := range e.approvals {
+		if len(filter) > 0 {
+			if _, ok := filter[approval.Status]; !ok {
+				continue
+			}
+		}
+		approvals = append(approvals, approval)
+	}
+
+	sort.Slice(approvals, func(i, j int) bool {
+		return approvals[i].CreatedAt.After(approvals[j].CreatedAt)
+	})
+	return approvals
 }

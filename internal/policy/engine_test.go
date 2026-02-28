@@ -2,11 +2,13 @@ package policy
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/harunnryd/heike/internal/config"
+	heikeErrors "github.com/harunnryd/heike/internal/errors"
 )
 
 func TestPolicyEngine(t *testing.T) {
@@ -47,7 +49,7 @@ func TestPolicyEngine(t *testing.T) {
 
 	// Require Approval
 	allowed, id, err := engine.Check("rm", nil)
-	if err != ErrApprovalRequired {
+	if err != heikeErrors.ErrApprovalRequired {
 		t.Errorf("Expected ErrApprovalRequired, got %v", err)
 	}
 	if allowed {
@@ -69,7 +71,7 @@ func TestPolicyEngine(t *testing.T) {
 	// Open Tool Domain Check
 	input := json.RawMessage(`{"url": "https://google.com"}`)
 	allowed, id2, err := engine.Check("open", input)
-	if err != ErrApprovalRequired {
+	if err != heikeErrors.ErrApprovalRequired {
 		t.Errorf("Expected open to require approval for new domain, got %v", err)
 	}
 
@@ -98,7 +100,7 @@ func TestPolicyEngine(t *testing.T) {
 
 	// Explicit sandbox escalation should force approval workflow.
 	allowed, escalatedID, err := engine.Check("exec_command", json.RawMessage(`{"cmd":"echo test","sandbox_permissions":"require_escalated"}`))
-	if err != ErrApprovalRequired {
+	if err != heikeErrors.ErrApprovalRequired {
 		t.Errorf("Expected require_escalated to require approval, got %v", err)
 	}
 	if allowed {
@@ -115,5 +117,40 @@ func TestPolicyEngine(t *testing.T) {
 	}
 	if allowed {
 		t.Error("Expected unsupported sandbox_permissions to be denied")
+	}
+}
+
+func TestPolicyEngine_QuotaNotConsumedByPendingApproval(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	wsID := "quota-pending-" + t.Name()
+	wsDir := filepath.Join(tmpDir, ".heike", "workspaces", wsID, "governance")
+	if err := os.MkdirAll(wsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	engine, err := NewEngine(config.GovernanceConfig{
+		RequireApproval: []string{"rm"},
+		DailyToolLimit:  1,
+	}, wsID, "")
+	if err != nil {
+		t.Fatalf("init policy engine: %v", err)
+	}
+
+	allowed, _, err := engine.Check("rm", nil)
+	if allowed {
+		t.Fatal("expected rm to require approval")
+	}
+	if !errors.Is(err, heikeErrors.ErrApprovalRequired) {
+		t.Fatalf("expected approval required error, got %v", err)
+	}
+
+	allowed, _, err = engine.Check("rm", nil)
+	if allowed {
+		t.Fatal("expected rm to require approval on second check")
+	}
+	if !errors.Is(err, heikeErrors.ErrApprovalRequired) {
+		t.Fatalf("expected approval required error on second check, got %v", err)
 	}
 }
